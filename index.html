@@ -99,8 +99,10 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 @media (max-width:640px){
   header{padding:10px 12px;gap:8px}
   h1{font-size:15px;width:100%;order:-1}
-  nav{margin-left:0;flex:1;gap:3px}
-  nav button{flex:1;padding:8px 4px;font-size:13px}
+  nav{margin-left:0;flex:1 0 100%;gap:5px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+      padding-bottom:2px;scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav button{flex:0 0 auto;padding:8px 12px;font-size:13px}
   main{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
   .hero .amt{font-size:38px}
   .grid{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
@@ -121,6 +123,8 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
   <nav id="tabs">
     <button data-act="tab" data-id="dash">Dashboard</button>
     <button data-act="tab" data-id="exp">Expenses</button>
+    <button data-act="tab" data-id="ess">Essentials</button>
+    <button data-act="tab" data-id="laun">Laundry</button>
     <button data-act="tab" data-id="arch">Archive</button>
     <button data-act="tab" data-id="owed">Owed</button>
   </nav>
@@ -263,23 +267,51 @@ function normalizeState(s){
   s.categories = sortById(s.categories);
   s.transactions = sortById(s.transactions);
   s.owed = sortById(s.owed);
+  s.laundryBudgets = sortById(s.laundryBudgets);
   s.archive = (s.archive || []).slice().sort((a,b)=> a.ym < b.ym ? 1 : -1);
   return s;
 }
 
-/* ---------- pure model ---------- */
+/* ---------- pure model ----------
+   Three kinds of spending, all of which leave your pocket, but only plain
+   "expense" counts towards the day-to-day spending figures:
+     expense   — canteen etc. Counted everywhere.
+     essential — money you expect back; creates an owed entry alongside it.
+     laundry   — drawn against an amount set aside for the month.            */
+const SPEND_TYPES = ["expense", "essential", "laundry"];
+function isSpend(x){ return SPEND_TYPES.indexOf(x.type) >= 0; }
+
 function curBalance(s){
   let t = s.meta.initialBalance;
-  for (const x of txns(s)) t += (x.type === "expense" ? -x.amount : x.amount);
+  for (const x of txns(s)) t += (isSpend(x) ? -x.amount : x.amount);
   return t;
 }
 function balanceAsOf(s, dateStr){
   let t = s.meta.initialBalance;
   for (const x of txns(s)){
     if (x.date > dateStr) continue;
-    t += (x.type === "expense" ? -x.amount : x.amount);
+    t += (isSpend(x) ? -x.amount : x.amount);
   }
   return t;
+}
+function typeTotal(s, type, ym){
+  return txns(s).reduce((a,x)=>
+    (x.type === type && (!ym || ymOf(x.date) === ym)) ? a + x.amount : a, 0);
+}
+/* The laundry amount carries forward: a month with nothing set uses the most
+   recent earlier month's figure. */
+function laundryBudget(s, ym){
+  const rows = (s.laundryBudgets || [])
+    .filter(r => !r.deleted && r.id <= ym)
+    .sort((a,b)=> a.id < b.id ? -1 : 1);
+  return rows.length ? rows[rows.length-1].amount : 0;
+}
+/* What's still held back out of available: whatever you set aside and haven't
+   spent yet. Spending it moves money out of current and out of the reserve at
+   the same time, which is why available doesn't budge. */
+function laundryHeld(s, ym){
+  ym = ym || curYm();
+  return Math.max(0, laundryBudget(s, ym) - typeTotal(s, "laundry", ym));
 }
 function owedTotal(s){
   return owedRows(s).reduce((t,o)=> o.status === "open" ? t + o.remaining : t, 0);
@@ -303,7 +335,8 @@ function syncOwed(s, o){
 }
 function available(s){
   return curBalance(s) - s.settings.minBalance
-         + (s.settings.includeOwed ? owedTotal(s) : 0);
+         + (s.settings.includeOwed ? owedTotal(s) : 0)
+         - laundryHeld(s);
 }
 function avgPerDay(s, today){
   const left = daysRemaining(curYm(), today);
@@ -323,7 +356,7 @@ function spendPerDay(s, ym, catId, today){
 }
 function monthAdded(s, ym){
   return txns(s).reduce((t,x)=>
-    (x.type !== "expense" && ymOf(x.date) === ym) ? t + x.amount : t, 0);
+    (!isSpend(x) && ymOf(x.date) === ym) ? t + x.amount : t, 0);
 }
 
 /* ---------- monthly archive ---------- */
@@ -337,6 +370,8 @@ function buildArchive(s, ym){
     ym, entries: ents.length, spent, days,
     perDay: Math.floor(spent / days),
     added: monthAdded(s, ym),
+    essentials: typeTotal(s, "essential", ym),
+    laundry: typeTotal(s, "laundry", ym),
     closingBalance: balanceAsOf(s, lastDayOf(ym)),
     minBalance: s.settings.minBalance,
     byCategory: Object.keys(by).map(id => {
@@ -413,6 +448,8 @@ function mergeStates(local, remote){
     categories: mergeRows(local.categories, remote.categories),
     transactions: mergeRows(local.transactions, remote.transactions),
     owed: mergeRows(local.owed, remote.owed),
+    // keyed by month, so the row id is the month itself and merging is free
+    laundryBudgets: mergeRows(local.laundryBudgets, remote.laundryBudgets),
     archive: [],
     meta: Object.assign({}, local.meta, {
       initialBalance: rm > lm ? remote.meta.initialBalance : local.meta.initialBalance,
@@ -555,9 +592,10 @@ function migrate(d){
   d.transactions = d.transactions || [];
   d.owed       = d.owed || [];
   d.archive    = d.archive || [];                       // added in v2
+  d.laundryBudgets = d.laundryBudgets || [];            // added in v4
   // v3: every row needs an id and an updatedAt so it can be merged across devices.
   const seed = Date.parse(d.meta.savedAt || "") || 1;
-  [d.categories, d.transactions, d.owed].forEach(list => list.forEach(x => {
+  [d.categories, d.transactions, d.owed, d.laundryBudgets].forEach(list => list.forEach(x => {
     if (!x.id) x.id = uid();
     if (typeof x.updatedAt !== "number") x.updatedAt = seed;
   }));
@@ -576,7 +614,7 @@ function freshState(initial, min){
     version: 3,
     settings: { minBalance: min, includeOwed: true, updatedAt: now },
     categories: BUILTIN_CATS.map(n => ({ id: uid(), name: n, builtin: true, archived: false, updatedAt: now })),
-    transactions: [], owed: [], archive: [],
+    transactions: [], owed: [], archive: [], laundryBudgets: [],
     meta: { initialBalance: initial, initialBalanceUpdatedAt: now,
             createdAt: todayStr(), lastSeenMonth: curYm(), savedAt: "" }
   };
@@ -685,12 +723,18 @@ function render(){
   document.getElementById("view").innerHTML =
       ui.tab === "dash" ? viewDash()
     : ui.tab === "exp"  ? viewExpenses()
+    : ui.tab === "ess"  ? viewEssentials()
+    : ui.tab === "laun" ? viewLaundry()
     : ui.tab === "arch" ? viewArchive()
     : viewOwed();
   const old = document.querySelector(".fab"); if (old) old.remove();
-  if (ui.tab === "dash" || ui.tab === "exp"){
+  const fab = ui.tab === "ess"  ? { act:"addEssential", label:"+ Add essential" }
+            : ui.tab === "laun" ? { act:"addLaundry",   label:"+ Add laundry spend" }
+            : (ui.tab === "dash" || ui.tab === "exp") ? { act:"addExpense", label:"+ Add expense" }
+            : null;
+  if (fab){
     const b = document.createElement("button");
-    b.className = "btn primary fab"; b.dataset.act = "addExpense"; b.textContent = "+ Add expense";
+    b.className = "btn primary fab"; b.dataset.act = fab.act; b.textContent = fab.label;
     document.body.appendChild(b);
   }
   paintSave(); paintSync();
@@ -716,6 +760,7 @@ function storageBanners(){
 function viewDash(){
   const cur = curBalance(state), ot = owedTotal(state), av = available(state);
   const min = state.settings.minBalance, ym = curYm();
+  const held = laundryHeld(state), essTotal = typeTotal(state, "essential", ym);
   const left = daysRemaining(ym), per = avgPerDay(state);
   const spent = monthSpent(state, ym, null), sper = spendPerDay(state, ym, null);
   const el = daysElapsed(ym);
@@ -727,7 +772,7 @@ function viewDash(){
   else if (av <= 0) banner += `<div class="banner bad"><span class="grow"><strong>Nothing left to spend.</strong>
       Everything above your minimum balance is used up.</span></div>`;
 
-  const allHist = sortedExpenses(txns(state).filter(t => t.type !== "expense"));
+  const allHist = sortedExpenses(txns(state).filter(t => !isSpend(t)));
   const hist = ui.allHistory ? allHist : allHist.slice(0, 10);
 
   return `
@@ -736,7 +781,7 @@ function viewDash(){
     <div class="lbl">Available to spend</div>
     <div class="amt ${av > 0 ? "good" : "bad"}">${esc(fmt(av))}</div>
     <div style="color:var(--muted);font-size:13px">
-      current ${esc(fmt(cur))} − min ${esc(fmt(min))}${state.settings.includeOwed && ot ? " + owed " + esc(fmt(ot)) : ""}
+      current ${esc(fmt(cur))} − min ${esc(fmt(min))}${state.settings.includeOwed && ot ? " + owed " + esc(fmt(ot)) : ""}${held ? " − laundry " + esc(fmt(held)) : ""}
     </div>
     <label class="toggle">
       <input type="checkbox" data-act="toggleOwed" ${state.settings.includeOwed ? "checked" : ""}>
@@ -766,6 +811,12 @@ function viewDash(){
       <div class="sub">${el === 1 ? "first day of a fresh month" : "over " + el + " days"}</div></div>
     <div class="stat"><div class="k">Spent / day so far</div><div class="v">${esc(fmt(sper))}</div>
       <div class="sub">vs ${esc(fmt(per))}/day available</div></div>
+    <div class="stat"><div class="k">Essentials</div><div class="v">${esc(fmt(essTotal))}</div>
+      <div class="sub">not in the figures above ·
+        <button class="btn sm" data-act="tab" data-id="ess">Open</button></div></div>
+    <div class="stat"><div class="k">Laundry set aside</div><div class="v">${esc(fmt(held))}</div>
+      <div class="sub">${esc(fmt(typeTotal(state,"laundry",ym)))} spent ·
+        <button class="btn sm" data-act="tab" data-id="laun">Open</button></div></div>
     ${lastArch ? `<div class="stat"><div class="k">${esc(monthLabel(lastArch.ym))} (archived)</div>
       <div class="v">${esc(fmt(lastArch.spent))}</div>
       <div class="sub">${esc(fmt(lastArch.perDay))}/day · <button class="btn sm" data-act="tab" data-id="arch">Archive</button></div></div>` : ""}
@@ -841,6 +892,94 @@ function viewExpenses(){
   </div>`;
 }
 
+/* Shared list renderer for the two side sections. */
+function sideList(type, ym){
+  const rows = sortedExpenses(txns(state).filter(t => t.type === type && ymOf(t.date) === ym));
+  if (!rows.length) return `<div class="empty">Nothing here for ${esc(monthLabel(ym))}.</div>`;
+  return `<ul class="list">${rows.map(t => `<li>
+      <div class="li-main">
+        <div>${esc(t.note || (type === "essential" ? "Essential" : "Laundry"))}</div>
+        <div class="li-sub">${esc(prettyDate(t.date))}</div>
+      </div>
+      <div class="li-amt">${esc(fmt(t.amount))}</div>
+      <button class="btn sm" data-act="editSide" data-id="${esc(t.id)}">Edit</button>
+    </li>`).join("")}</ul>`;
+}
+function monthNav(ym){
+  return `<div class="row between" style="margin-bottom:12px"><div class="row">
+      <button class="btn sm" data-act="prevMonth">&lsaquo;</button>
+      <strong>${esc(monthLabel(ym))}</strong>
+      <button class="btn sm" data-act="nextMonth">&rsaquo;</button>
+      ${ym === curYm() ? `<span class="pill">this month</span>`
+                       : `<button class="btn sm" data-act="thisMonth">Today</button>`}
+    </div></div>`;
+}
+
+function viewEssentials(){
+  const ym = ui.month;
+  const total = typeTotal(state, "essential", ym);
+  const allTime = typeTotal(state, "essential", null);
+  const count = txns(state).filter(t => t.type === "essential" && ymOf(t.date) === ym).length;
+  return `
+  ${storageBanners()}
+  ${monthNav(ym)}
+  <div class="card hero">
+    <div class="lbl">Essentials — ${esc(monthLabel(ym))}</div>
+    <div class="amt">${esc(fmt(total))}</div>
+    <div style="color:var(--muted);font-size:13px">
+      Out of your current balance, but kept out of your day-to-day spending figures.</div>
+  </div>
+  <div class="grid">
+    <div class="stat"><div class="k">Entries</div><div class="v">${count}</div></div>
+    <div class="stat"><div class="k">All time</div><div class="v">${esc(fmt(allTime))}</div></div>
+    <div class="stat"><div class="k">Still owed to you</div>
+      <div class="v">${esc(fmt(owedTotal(state)))}</div>
+      <div class="sub"><button class="btn sm" data-act="tab" data-id="owed">Owed tab</button></div></div>
+  </div>
+  <div class="banner info"><span class="grow">Each entry here also creates an <strong>owed</strong>
+    entry for the same amount, so your available balance doesn't move — the money is coming back.
+    The two are separate after that: edit or delete either without touching the other.</span></div>
+  <h2>Entries</h2>
+  <div class="card">${sideList("essential", ym)}</div>`;
+}
+
+function viewLaundry(){
+  const ym = ui.month;
+  const budget = laundryBudget(state, ym);
+  const spent = typeTotal(state, "laundry", ym);
+  const left = budget - spent;
+  const held = Math.max(0, left);
+  const isCur = ym === curYm();
+  const explicit = (state.laundryBudgets || []).some(r => !r.deleted && r.id === ym);
+  return `
+  ${storageBanners()}
+  ${monthNav(ym)}
+  <div class="card hero">
+    <div class="lbl">Set aside for ${esc(monthLabel(ym))}</div>
+    <div class="amt">${esc(fmt(budget))}</div>
+    <div style="color:var(--muted);font-size:13px">
+      ${budget ? "Held back from available; still sitting in your current balance."
+               : "Nothing set aside yet."}
+      ${!explicit && budget ? "<br>Carried forward from an earlier month." : ""}</div>
+    <div style="margin-top:10px"><button class="btn sm primary" data-act="setLaundry">
+      ${budget ? "Change amount" : "Set an amount"}</button></div>
+  </div>
+  <div class="grid">
+    <div class="stat"><div class="k">Spent</div><div class="v">${esc(fmt(spent))}</div></div>
+    <div class="stat"><div class="k">${left < 0 ? "Over by" : "Left"}</div>
+      <div class="v ${left < 0 ? "bad" : ""}">${esc(fmt(Math.abs(left)))}</div>
+      <div class="sub">${left < 0 ? "the excess comes out of available" : "still held back"}</div></div>
+    ${isCur ? `<div class="stat"><div class="k">Held from available</div>
+      <div class="v">${esc(fmt(held))}</div></div>` : ""}
+  </div>
+  <div class="banner info"><span class="grow">Setting an amount lowers <strong>available</strong>
+    but not <strong>current</strong>. Spending it lowers <strong>current</strong> but not
+    <strong>available</strong> — it was already set aside. Go over and only the excess
+    eats into available.</span></div>
+  <h2>Spending</h2>
+  <div class="card">${sideList("laundry", ym)}</div>`;
+}
+
 function viewArchive(){
   const ym = curYm();
   const live = buildArchive(state, ym);
@@ -864,6 +1003,12 @@ function viewArchive(){
           <div class="v">${esc(fmt(isLive ? spendPerDay(state, r.ym, null) : r.perDay))}</div>
           <div class="sub">${isLive ? "so far this month" : "across " + r.days + " days"}</div></div>
         <div class="stat"><div class="k">Money added</div><div class="v">${esc(fmt(r.added))}</div></div>
+        <div class="stat"><div class="k">Essentials</div>
+          <div class="v">${esc(fmt(r.essentials || 0))}</div>
+          <div class="sub">separate from spending</div></div>
+        <div class="stat"><div class="k">Laundry</div>
+          <div class="v">${esc(fmt(r.laundry || 0))}</div>
+          <div class="sub">of ${esc(fmt(laundryBudget(state, r.ym)))} set aside</div></div>
         <div class="stat"><div class="k">${isLive ? "Balance now" : "Closing balance"}</div>
           <div class="v">${esc(fmt(isLive ? curBalance(state) : r.closingBalance))}</div></div>
       </div>
@@ -1129,6 +1274,66 @@ function dlgReceivePart(o){
     });
 }
 
+/* Essentials and laundry entries: same shape, different meaning. */
+function dlgSide(type, existing){
+  const isEss = type === "essential";
+  const title = existing ? (isEss ? "Edit essential" : "Edit laundry spend")
+                         : (isEss ? "Add essential"  : "Add laundry spend");
+  const intro = existing ? ""
+    : isEss ? `<p style="color:var(--muted);font-size:13px;margin-top:0">Comes out of your current
+        balance and adds an owed entry for the same amount, so available stays where it is.
+        It won't touch your spending-per-day figures.</p>`
+            : `<p style="color:var(--muted);font-size:13px;margin-top:0">Comes out of your current
+        balance. Available doesn't move while you're still within what you set aside
+        (${esc(fmt(laundryBudget(state, curYm())))} this month).</p>`;
+  openDlg(title,
+    intro + fAmount(existing && existing.amount) + fDate(existing && existing.date)
+    + `<label><span>What for${isEss ? "" : " (optional)"}</span>
+        <input name="note" type="text" autocomplete="off"
+          placeholder="${isEss ? "e.g. medicines" : "e.g. washing"}"
+          value="${esc(existing ? existing.note : "")}"></label>`,
+    fd => {
+      const amt = parseMoney(fd.get("amount"));
+      if (amt == null) return "Enter an amount greater than zero.";
+      const date = fd.get("date"); if (!date) return "Pick a date.";
+      const note = fd.get("note").trim();
+      if (existing){
+        stamp(Object.assign(existing, { amount:amt, date, note }));
+      } else {
+        state.transactions.push(stamp({ id:uid(), type, amount:amt, date, note }));
+        if (isEss)   // the matching owed entry; independent from here on
+          state.owed.push(stamp({ id:uid(), label: note || "Essentials", amount:amt,
+            remaining:amt, dateAdded:date, note:"From essentials", status:"open", dateClosed:null }));
+        if (ymOf(date) !== ui.month) ui.month = ymOf(date);
+      }
+    },
+    existing ? `<button type="button" class="btn danger spacer" data-del>Delete</button>` : "");
+  if (existing) dlg.querySelector("[data-del]").onclick = () => {
+    if (!confirm("Delete this? Your current balance goes back up by " + fmt(existing.amount)
+        + (isEss ? ".\n\nThe owed entry it created stays — remove that separately if you want it gone." : "."))) return;
+    tombstone(existing); closeDlg(); commit();
+  };
+}
+
+function dlgLaundryBudget(){
+  const ym = ui.month;
+  const cur = laundryBudget(state, ym);
+  openDlg("Set aside for " + monthLabel(ym),
+    `<p style="color:var(--muted);font-size:13px;margin-top:0">Held back from available, but it
+      stays in your current balance until you actually spend it. Later months inherit this
+      amount until you change it.</p>`
+    + `<label><span>Amount (₹)</span>
+        <input class="amount-in" name="amount" type="text" inputmode="decimal"
+          autocomplete="off" value="${esc(toInput(cur))}"></label>`,
+    fd => {
+      const amt = parseAmountOrZero(fd.get("amount"));
+      if (amt == null || amt < 0) return "Enter an amount (0 to set nothing aside).";
+      const row = (state.laundryBudgets || []).find(r => r.id === ym);
+      if (row){ row.amount = amt; delete row.deleted; stamp(row); }
+      else state.laundryBudgets.push(stamp({ id: ym, amount: amt }));
+    });
+}
+
 function dlgSettings(){
   const linked = Store.handle && Store.fileOk;
   openDlg("Settings", `
@@ -1243,6 +1448,14 @@ document.addEventListener("click", e => {
 
     case "addExpense": dlgExpense(null); break;
     case "editExpense": dlgExpense(txns(state).find(t => t.id === id)); break;
+    case "addEssential": dlgSide("essential", null); break;
+    case "addLaundry": dlgSide("laundry", null); break;
+    case "setLaundry": dlgLaundryBudget(); break;
+    case "editSide": {
+      const t = txns(state).find(x => x.id === id);
+      if (t) dlgSide(t.type, t);
+      break;
+    }
     case "addMoney": dlgSimpleTxn("add"); break;
     case "adjust": dlgSimpleTxn("adjust"); break;
     case "editMin": case "settings":
@@ -1356,7 +1569,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && dlg.open){ closeDlg(); return; }
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) || dlg.open || !state) return;
   if (e.key === "a"){ e.preventDefault(); dlgExpense(null); }
-  const tabs = { "1":"dash", "2":"exp", "3":"arch", "4":"owed" };
+  const tabs = { "1":"dash", "2":"exp", "3":"ess", "4":"laun", "5":"arch", "6":"owed" };
   if (tabs[e.key]){ ui.tab = tabs[e.key]; render(); }
 });
 
@@ -1610,7 +1823,7 @@ function runTests(){
   const base = () => ({ version:2, settings:{ minBalance:20000, includeOwed:true },
     categories:[{id:"c1",name:"Mess",builtin:true,archived:false},
                 {id:"c2",name:"RC",builtin:true,archived:false}],
-    transactions:[], owed:[], archive:[],
+    transactions:[], owed:[], archive:[], laundryBudgets:[],
     meta:{ initialBalance:100000, createdAt:"2026-08-01", lastSeenMonth:"2026-08", savedAt:"" } });
   const T = "2026-08-10";
 
@@ -1845,7 +2058,7 @@ function runTests(){
   const dev = (rows, extra) => Object.assign({ version:3,
     settings:{ minBalance:20000, includeOwed:true, updatedAt:100 },
     categories:[{id:"c1",name:"Mess",archived:false,updatedAt:1}],
-    transactions:rows||[], owed:[], archive:[],
+    transactions:rows||[], owed:[], archive:[], laundryBudgets:[],
     meta:{ initialBalance:100000, initialBalanceUpdatedAt:100, createdAt:"2026-08-01",
            lastSeenMonth:"2026-08", savedAt:"" } }, extra||{});
   const ex = (id, amt, ts, del) => ({ id, type:"expense", categoryId:"c1", amount:amt,
@@ -1927,6 +2140,82 @@ function runTests(){
   const tricky = JSON.stringify({ note:"chai ₹12 — Nescafé", emoji:"🍵" });
   eq(b64decode(b64encode(tricky)), tricky, "35a. UTF-8 survives the base64 round-trip");
   eq(b64decode(b64encode("")), "", "35b. empty string round-trips");
+
+  /* ---- essentials ---- */
+  const ess = (id, amt, ts, date) => ({ id, type:"essential", amount:amt, date:date||T, note:"", updatedAt:ts||1 });
+  s = base();
+  s.transactions.push(ess("x1", 30000));
+  eq(curBalance(s), 70000, "36a. an essential comes out of current balance");
+  eq(monthSpent(s,"2026-08",null), 0, "36b. but not out of monthly spending");
+  eq(spendPerDay(s,"2026-08",null,T), 0, "36c. nor the per-day figure");
+  eq(typeTotal(s,"essential","2026-08"), 30000, "36d. it has its own total");
+  eq(monthAdded(s,"2026-08"), 0, "36e. and isn't counted as money added");
+  // with the owed entry it creates, available is unmoved
+  const avBase = available(base());
+  s.owed.push({id:"o9",label:"Essentials",amount:30000,remaining:30000,dateAdded:T,status:"open",note:"",updatedAt:1});
+  eq(available(s), avBase, "36f. essential + its owed entry leaves available unchanged");
+  eq(owedTotal(s), 30000, "36g. the owed entry stands on its own");
+  // deleting the essential must not disturb the owed entry (they're independent)
+  tombstone(s.transactions.find(t=>t.id==="x1"));
+  eq(curBalance(s), 100000, "36h. deleting the essential restores the balance");
+  eq(owedTotal(s), 30000, "36i. and leaves the owed entry alone");
+
+  /* ---- laundry ---- */
+  s = base(); s.laundryBudgets = [{ id:"2026-08", amount:50000, updatedAt:1 }];
+  const cur0 = curBalance(s), av0 = available(base());
+  eq(curBalance(s), cur0, "37a. setting an amount aside doesn't touch current");
+  eq(available(s), av0 - 50000, "37b. but does hold it back from available");
+  eq(laundryHeld(s,"2026-08"), 50000, "37c. all of it is held while unspent");
+  // spending from it: current down, available unmoved
+  s.transactions.push({id:"l1",type:"laundry",amount:20000,date:T,note:"",updatedAt:1});
+  eq(curBalance(s), cur0 - 20000, "37d. spending it lowers current");
+  eq(available(s), av0 - 50000, "37e. and leaves available exactly where it was");
+  eq(laundryHeld(s,"2026-08"), 30000, "37f. the held amount shrinks as you spend");
+  eq(monthSpent(s,"2026-08",null), 0, "37g. laundry stays out of monthly spending");
+  eq(typeTotal(s,"laundry","2026-08"), 20000, "37h. it has its own total");
+  // spending it all: still no change to available
+  s.transactions.push({id:"l2",type:"laundry",amount:30000,date:T,note:"",updatedAt:1});
+  eq(available(s), av0 - 50000, "37i. spending the lot still leaves available alone");
+  eq(laundryHeld(s,"2026-08"), 0, "37j. nothing left held back");
+  // overspending: only the excess bites
+  s.transactions.push({id:"l3",type:"laundry",amount:10000,date:T,note:"",updatedAt:1});
+  eq(laundryHeld(s,"2026-08"), 0, "37k. can't hold back less than nothing");
+  eq(available(s), av0 - 60000, "37l. going over cuts available by the excess only");
+  eq(curBalance(s), cur0 - 60000, "37m. current is down by everything spent");
+
+  // the amount carries forward into later months
+  s = base(); s.laundryBudgets = [{ id:"2026-06", amount:40000, updatedAt:1 }];
+  eq(laundryBudget(s,"2026-08"), 40000, "38a. an unset month inherits the last one set");
+  eq(laundryBudget(s,"2026-05"), 0, "38b. months before the first stay at nothing");
+  s.laundryBudgets.push({ id:"2026-08", amount:70000, updatedAt:2 });
+  eq(laundryBudget(s,"2026-08"), 70000, "38c. an explicit amount wins for its own month");
+  eq(laundryBudget(s,"2026-07"), 40000, "38d. earlier months keep the older amount");
+  eq(laundryBudget(s,"2026-09"), 70000, "38e. later months inherit the newest");
+  // a new month resets what's been spent, so the whole amount is held again
+  s.transactions.push({id:"l1",type:"laundry",amount:70000,date:"2026-08-04",note:"",updatedAt:1});
+  eq(laundryHeld(s,"2026-08"), 0, "38f. August fully spent");
+  eq(laundryHeld(s,"2026-09"), 70000, "38g. September starts with the full amount held");
+
+  // budgets merge across devices like any other row
+  A = dev([]); A.laundryBudgets = [{ id:"2026-08", amount:50000, updatedAt:10 }];
+  B = dev([]); B.laundryBudgets = [{ id:"2026-08", amount:80000, updatedAt:20 },
+                                   { id:"2026-09", amount:90000, updatedAt:20 }];
+  M = mergeStates(A,B);
+  eq(laundryBudget(M,"2026-08"), 80000, "39a. the newer amount wins on merge");
+  eq(laundryBudget(M,"2026-09"), 90000, "39b. a month only one device knew about survives");
+  eq(syncFingerprint(mergeStates(A,B)), syncFingerprint(mergeStates(B,A)), "39c. still order-independent");
+
+  // archive records both side sections
+  s = base(); s.meta.lastSeenMonth = "2026-07";
+  s.transactions.push({id:"e7",type:"expense",categoryId:"c1",amount:4000,date:"2026-07-05",updatedAt:1});
+  s.transactions.push(ess("s7", 9000, 1, "2026-07-08"));
+  s.transactions.push({id:"l7",type:"laundry",amount:2000,date:"2026-07-09",note:"",updatedAt:1});
+  rolloverIfNeeded(s, "2026-08");
+  eq(s.archive[0].spent, 4000, "40a. archived spending excludes the side sections");
+  eq(s.archive[0].essentials, 9000, "40b. essentials archived separately");
+  eq(s.archive[0].laundry, 2000, "40c. laundry archived separately");
+  eq(s.archive[0].added, 0, "40d. neither counts as money added");
+  eq(s.archive[0].closingBalance, 100000-4000-9000-2000, "40e. closing balance nets all three");
 
   function rec(st,o,amt,date){
     st.transactions.push({id:uid(),type:"received",owedId:o.id,amount:amt,date,note:o.label});
