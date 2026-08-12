@@ -950,6 +950,13 @@ function renderSetup(){
         <input id="s-min" class="amount-in" type="text" inputmode="decimal" placeholder="0"></label>
       <div class="err" id="s-err"></div>
       <button class="btn primary" data-act="doSetup" style="width:100%;padding:11px">Start tracking</button>
+      <hr>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 8px">
+        Already using this somewhere else? Don't start fresh — pull your data across.</p>
+      <div class="row">
+        <button class="btn sm primary" data-act="syncSetup">Connect to my sync</button>
+        <button class="btn sm" data-act="import">Restore from a backup file</button>
+      </div>
     </div>`;
   const f = document.getElementById("s-cur"); if (f) f.focus();
 }
@@ -1202,14 +1209,16 @@ function doImport(){
       if (!d || !Array.isArray(d.transactions) || !Array.isArray(d.categories)){
         alert("That file doesn't look like an expense tracker backup."); return;
       }
-      const msg = "Replace your current data with this backup?\n\n"
-        + "Backup has: " + d.transactions.length + " transactions, " + d.categories.length
-        + " categories, " + d.owed.length + " owed entries, " + d.archive.length + " archived months.\n"
-        + "You currently have: " + txns(state).length + " transactions, "
-        + catRows(state).length + " categories, " + owedRows(state).length + " owed entries, "
-        + state.archive.length + " archived months.\n\nYour current data downloads as a backup first.";
+      const has = "Backup has: " + txns(d).length + " transactions, " + catRows(d).length
+        + " categories, " + owedRows(d).length + " owed entries, " + d.archive.length + " archived months.";
+      const msg = state
+        ? "Replace your current data with this backup?\n\n" + has + "\n"
+          + "You currently have: " + txns(state).length + " transactions, "
+          + catRows(state).length + " categories, " + owedRows(state).length + " owed entries, "
+          + state.archive.length + " archived months.\n\nYour current data downloads as a backup first."
+        : "Load this backup onto this device?\n\n" + has;
       if (!confirm(msg)) return;
-      exportNow("before-import-" + todayStr());
+      if (state) exportNow("before-import-" + todayStr());
       state = d; closeDlg(); commit();
     };
     r.readAsText(file);
@@ -1236,7 +1245,10 @@ document.addEventListener("click", e => {
     case "editExpense": dlgExpense(txns(state).find(t => t.id === id)); break;
     case "addMoney": dlgSimpleTxn("add"); break;
     case "adjust": dlgSimpleTxn("adjust"); break;
-    case "editMin": case "settings": dlgSettings(); break;
+    case "editMin": case "settings":
+      // Before setup there are no settings to show; offer the ways in instead.
+      if (!state) dlgSync(); else dlgSettings();
+      break;
 
     case "editTxn": dlgTxn(txns(state).find(x => x.id === id)); break;
     case "toggleHistory": ui.allHistory = !ui.allHistory; render(); break;
@@ -1460,11 +1472,24 @@ const Sync = {
   },
 
   async run(){
-    if (!this.on() || this.busy || !state) return;
+    if (!this.on() || this.busy) return;
     if (!navigator.onLine){ this.status = "offline"; paintSync(); return; }
     this.busy = true; this.status = "syncing"; this.error = ""; paintSync();
     try {
       const remote = await this.pull();
+      // Nothing stored on this device — a new phone, or storage the browser
+      // cleared. Whatever is in the cloud becomes this device's data.
+      if (!state){
+        if (remote){
+          state = remote;
+          rolloverIfNeeded(state); refreshArchive(state);
+          await Store.save(state);
+          render();
+        }
+        this.status = "ok"; this.lastAt = Date.now();
+        this.busy = false; paintSync();
+        return;
+      }
       let merged = mergeStates(state, remote);
       rolloverIfNeeded(merged); refreshArchive(merged);
       const before = syncFingerprint(state), after = syncFingerprint(merged);
