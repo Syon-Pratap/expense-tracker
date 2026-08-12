@@ -98,7 +98,10 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .mono{font-variant-numeric:tabular-nums}
 @media (max-width:640px){
   header{padding:10px 12px;gap:8px}
-  h1{font-size:15px;width:100%;order:-1}
+  /* row 1: title, status, settings. row 2: the scrolling tab strip. */
+  h1{font-size:15px;order:-2}
+  .save-ind{order:-2;font-size:11px}
+  header>[data-act=settings]{order:-1;margin-left:auto}
   nav{margin-left:0;flex:1 0 100%;gap:5px;overflow-x:auto;-webkit-overflow-scrolling:touch;
       padding-bottom:2px;scrollbar-width:none}
   nav::-webkit-scrollbar{display:none}
