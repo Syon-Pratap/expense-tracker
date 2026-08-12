@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Expense tracker">
+  <rect width="512" height="512" rx="112" fill="#2f6fed"/>
+  <path d="M170 150h172" stroke="#fff" stroke-width="30" stroke-linecap="round"/>
+  <path d="M170 214h172" stroke="#fff" stroke-width="30" stroke-linecap="round"/>
+  <path d="M170 150c74 0 74 128 0 128h34l104 112" stroke="#fff" stroke-width="30"
+        stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

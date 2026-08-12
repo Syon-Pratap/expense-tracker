@@ -1,0 +1,1951 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Expense Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2f6fed">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Expenses">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#f5f6f8; --card:#fff; --text:#14161a; --muted:#6b7280; --line:#e4e6ea;
+  --accent:#2f6fed; --good:#0a8f4d; --bad:#d92d20; --warn:#b45309; --chip:#eef1f6;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#101216; --card:#1a1d23; --text:#e8eaed; --muted:#9aa0a6; --line:#2a2e36;
+         --accent:#6f9bff; --good:#3ac07e; --bad:#ff6b6b; --warn:#e0a458; --chip:#242830; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--card);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;flex-wrap:wrap}
+h1{font-size:16px;margin:0;font-weight:650;letter-spacing:-.2px}
+.save-ind{font-size:12px;color:var(--muted);white-space:nowrap}
+.save-ind.err{color:var(--bad);font-weight:600}
+nav{display:flex;gap:4px;margin-left:auto}
+nav button,.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);
+  color:var(--text);border-radius:8px;padding:7px 13px}
+nav button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn:hover,nav button:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.sm{padding:4px 9px;font-size:13px}
+.btn.danger{color:var(--bad);border-color:var(--line)}
+main{max-width:900px;margin:0 auto;padding:18px 16px 90px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.hero{text-align:center;padding:22px 16px}
+.hero .lbl{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.7px}
+.hero .amt{font-size:44px;font-weight:700;letter-spacing:-1.5px;margin:4px 0;font-variant-numeric:tabular-nums}
+.good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+.stat .v{font-size:21px;font-weight:650;margin-top:3px;font-variant-numeric:tabular-nums}
+.stat .sub{color:var(--muted);font-size:12px;margin-top:2px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.between{justify-content:space-between}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:22px 0 9px}
+.chips{display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:4px}
+.chip{white-space:nowrap;cursor:pointer;border:1px solid var(--line);background:var(--chip);
+  color:var(--text);border-radius:999px;padding:7px 13px;font:inherit;font-size:13px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.chip .t{opacity:.7;margin-left:5px;font-variant-numeric:tabular-nums}
+ul.list{list-style:none;margin:0;padding:0}
+ul.list li{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line)}
+ul.list li:last-child{border-bottom:0}
+.li-main{flex:1;min-width:0}
+.li-sub{color:var(--muted);font-size:12.5px;margin-top:1px;overflow:hidden;text-overflow:ellipsis}
+.li-amt{font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}
+.empty{color:var(--muted);text-align:center;padding:26px 10px;font-size:14px}
+.fab{position:fixed;right:20px;bottom:20px;z-index:20;border-radius:999px;padding:14px 22px;
+  font-size:15px;font-weight:650;box-shadow:0 6px 22px rgba(0,0,0,.22)}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--text);
+  padding:0;width:min(430px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form{padding:18px}
+dialog h3{margin:0 0 14px;font-size:17px}
+label{display:block;margin-bottom:11px}
+label span{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;
+  text-transform:uppercase;letter-spacing:.5px}
+input[type=text],input[type=number],input[type=date],select,textarea{width:100%;font:inherit;
+  padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.amount-in{font-size:24px !important;font-weight:650;font-variant-numeric:tabular-nums}
+.dlg-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.dlg-actions .spacer{margin-right:auto}
+.err{color:var(--bad);font-size:13px;min-height:18px;margin-top:-4px}
+.banner{border-radius:10px;padding:11px 13px;font-size:13.5px;margin-bottom:14px;
+  border:1px solid var(--line);background:var(--chip);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.banner .grow{flex:1;min-width:180px}
+.banner.bad{border-color:var(--bad);color:var(--bad)}
+.banner.info{border-color:var(--accent)}
+.toggle{display:flex;align-items:center;gap:8px;justify-content:center;color:var(--muted);
+  font-size:13px;margin-top:8px;cursor:pointer}
+.toggle input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+details summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
+.pill{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip);color:var(--muted)}
+.tests{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;white-space:pre-wrap}
+.setup{max-width:400px;margin:50px auto}
+hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+.bar{height:7px;border-radius:4px;background:var(--accent);opacity:.85;min-width:3px}
+.bartrack{flex:1;background:var(--chip);border-radius:4px;overflow:hidden;max-width:220px}
+.mono{font-variant-numeric:tabular-nums}
+@media (max-width:640px){
+  header{padding:10px 12px;gap:8px}
+  h1{font-size:15px;width:100%;order:-1}
+  nav{margin-left:0;flex:1;gap:3px}
+  nav button{flex:1;padding:8px 4px;font-size:13px}
+  main{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
+  .hero .amt{font-size:38px}
+  .grid{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+  ul.list li{flex-wrap:wrap;padding:12px 2px}
+  ul.list li .btn{padding:6px 11px}      /* easier to hit with a thumb */
+  .li-main{flex:1 0 60%}
+  .fab{right:16px;bottom:calc(16px + env(safe-area-inset-bottom));padding:15px 24px}
+  dialog{width:min(430px,94vw)}
+  input[type=text],input[type=number],input[type=date],select{font-size:16px}  /* stops iOS zooming on focus */
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Expense Tracker</h1>
+  <span class="save-ind" id="saveInd"></span>
+  <span class="save-ind" id="syncInd"></span>
+  <nav id="tabs">
+    <button data-act="tab" data-id="dash">Dashboard</button>
+    <button data-act="tab" data-id="exp">Expenses</button>
+    <button data-act="tab" data-id="arch">Archive</button>
+    <button data-act="tab" data-id="owed">Owed</button>
+  </nav>
+  <button class="btn" data-act="settings" title="Settings">&#9881;</button>
+</header>
+<main id="view"></main>
+<dialog id="dlg"></dialog>
+
+<script>
+"use strict";
+/* ============================================================================
+   Personal expense tracker — one file, offline, no server, no account.
+
+   STORAGE (durable across closing the app, the browser, and reboots):
+     1. IndexedDB  — the working store, written on every change.
+     2. localStorage — a mirror, so either one alone can rebuild your data.
+     3. An optional real file on disk (expense-data.json) via the File System
+        Access API, written on every change once you link it in Settings.
+     Persistent-storage permission is requested so the browser never evicts it.
+
+   MONTHS: on the 1st, the finished month is summarised into the Archive and
+   the dashboard starts fresh. Raw entries are never deleted.
+
+   Open index.html?test=1 to run the test suite.
+   ========================================================================== */
+
+const KEY = "expense-tracker-v1";              // localStorage mirror key
+const DB_NAME = "expense-tracker", DB_STORE = "kv";
+const BUILTIN_CATS = ["Vending Machine","Mess","Night Canteen","RC","JV Shetty",
+                      "IC","Nescafe","INS","Subspot","Other Canteens"];
+
+/* ---------- money: integer paise everywhere ---------- */
+function parseMoney(str, allowNegative){
+  if (str == null) return null;
+  let s = String(str).replace(/[\s,₹]/g,"");
+  if (s === "") return null;
+  if (!/^-?\d*\.?\d{0,2}$/.test(s)) return null;
+  const n = Number(s);
+  if (!isFinite(n)) return null;
+  const p = Math.round(n * 100);
+  if (!allowNegative && p <= 0) return null;
+  if (allowNegative && p === 0) return null;
+  return p;
+}
+/* For fields where zero is a legitimate value (minimum balance, starting balance). */
+function parseAmountOrZero(str){
+  const s = String(str == null ? "" : str).replace(/[\s,₹]/g,"");
+  if (s === "" || s === "-" || !/^-?\d*\.?\d{0,2}$/.test(s)) return null;
+  const n = Number(s);
+  return isFinite(n) ? Math.round(n * 100) : null;
+}
+function fmt(paise){
+  const neg = paise < 0, p = Math.abs(paise);
+  const rupees = Math.floor(p/100), cents = p%100;
+  let s = rupees.toLocaleString("en-IN");
+  if (cents) s += "." + String(cents).padStart(2,"0");
+  return (neg ? "-₹" : "₹") + s;
+}
+function toInput(paise){ return (paise/100).toFixed(2).replace(/\.00$/,""); }
+
+/* ---------- dates: local YYYY-MM-DD strings, never UTC ---------- */
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
+         + "-" + String(d.getDate()).padStart(2,"0");
+}
+function ymOf(dateStr){ return dateStr.slice(0,7); }
+function curYm(){ return ymOf(todayStr()); }
+function daysInMonth(ym){ const [y,m] = ym.split("-").map(Number); return new Date(y, m, 0).getDate(); }
+function lastDayOf(ym){ return ym + "-" + String(daysInMonth(ym)).padStart(2,"0"); }
+function monthLabel(ym){
+  const [y,m] = ym.split("-").map(Number);
+  return new Date(y, m-1, 1).toLocaleString("en-IN",{month:"long",year:"numeric"});
+}
+function shiftMonth(ym, delta){
+  const [y,m] = ym.split("-").map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+}
+function prettyDate(dateStr){
+  const [y,m,d] = dateStr.split("-").map(Number);
+  return new Date(y,m-1,d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+}
+// Today counts as both elapsed and remaining.
+function daysElapsed(ym, today){
+  today = today || todayStr();
+  if (ym === ymOf(today)) return Number(today.slice(8,10));
+  return daysInMonth(ym);
+}
+function daysRemaining(ym, today){
+  today = today || todayStr();
+  const now = ymOf(today);
+  if (ym === now) return daysInMonth(ym) - Number(today.slice(8,10)) + 1;
+  if (ym < now) return 0;
+  return daysInMonth(ym);
+}
+
+/* ---------- live entities ----------
+   Deleting sets a `deleted` tombstone instead of removing the row, so a delete
+   made on one device survives merging with a device that still has the row.
+   Every read goes through these, so tombstones never reach the UI or the maths. */
+function txns(s){ return s.transactions.filter(x => !x.deleted); }
+function owedRows(s){ return s.owed.filter(o => !o.deleted); }
+function catRows(s){ return s.categories.filter(c => !c.deleted); }
+
+/* Edit timestamps drive "who wins" when two devices touch the same row, but
+   phone and laptop clocks drift. clockFloor keeps our stamps strictly above the
+   newest timestamp we've ever seen, so an edit made *after* seeing the other
+   device's data always wins — even if that device's clock runs fast. */
+let clockFloor = 0;
+function nowTs(){ const t = Math.max(Date.now(), clockFloor + 1); clockFloor = t; return t; }
+function noteClock(s){
+  if (!s) return s;
+  for (const list of [s.categories, s.transactions, s.owed])
+    for (const r of (list || [])) if (r && r.updatedAt > clockFloor) clockFloor = r.updatedAt;
+  if (s.settings && s.settings.updatedAt > clockFloor) clockFloor = s.settings.updatedAt;
+  if (s.meta && s.meta.initialBalanceUpdatedAt > clockFloor) clockFloor = s.meta.initialBalanceUpdatedAt;
+  return s;
+}
+function stamp(x){ x.updatedAt = nowTs(); return x; }
+function tombstone(x){ x.deleted = true; return stamp(x); }
+
+/* Same data must produce the same string on every device, whatever order keys
+   or rows happen to sit in — otherwise the two devices see a phantom change and
+   push at each other forever. */
+function canonical(v){
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object"){
+    const out = {};
+    for (const k of Object.keys(v).sort()) out[k] = canonical(v[k]);
+    return out;
+  }
+  return v;
+}
+function sortById(rows){
+  return (rows || []).slice().sort((x,y)=> x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
+}
+function normalizeState(s){
+  if (!s) return s;
+  s.categories = sortById(s.categories);
+  s.transactions = sortById(s.transactions);
+  s.owed = sortById(s.owed);
+  s.archive = (s.archive || []).slice().sort((a,b)=> a.ym < b.ym ? 1 : -1);
+  return s;
+}
+
+/* ---------- pure model ---------- */
+function curBalance(s){
+  let t = s.meta.initialBalance;
+  for (const x of txns(s)) t += (x.type === "expense" ? -x.amount : x.amount);
+  return t;
+}
+function balanceAsOf(s, dateStr){
+  let t = s.meta.initialBalance;
+  for (const x of txns(s)){
+    if (x.date > dateStr) continue;
+    t += (x.type === "expense" ? -x.amount : x.amount);
+  }
+  return t;
+}
+function owedTotal(s){
+  return owedRows(s).reduce((t,o)=> o.status === "open" ? t + o.remaining : t, 0);
+}
+function receivedFor(s, owedId){
+  return txns(s).reduce((a,t)=> (t.type === "received" && t.owedId === owedId) ? a + t.amount : a, 0);
+}
+/* An owed entry's outstanding amount is always derived from its payments, so
+   editing or undoing any payment can never leave it out of step. */
+function syncOwed(s, o){
+  if (o.status === "writtenOff"){ o.remaining = 0; return o; }
+  const got = receivedFor(s, o.id);
+  o.remaining = Math.max(0, o.amount - got);
+  if (o.remaining === 0 && got > 0){
+    o.status = "received";
+    if (!o.dateClosed) o.dateClosed = todayStr();
+  } else {
+    o.status = "open"; o.dateClosed = null;
+  }
+  return o;
+}
+function available(s){
+  return curBalance(s) - s.settings.minBalance
+         + (s.settings.includeOwed ? owedTotal(s) : 0);
+}
+function avgPerDay(s, today){
+  const left = daysRemaining(curYm(), today);
+  const av = available(s);
+  return left > 0 ? Math.floor(av / left) : av;
+}
+function monthSpent(s, ym, catId){
+  return txns(s).reduce((t,x)=>{
+    if (x.type !== "expense" || ymOf(x.date) !== ym) return t;
+    if (catId && catId !== "all" && x.categoryId !== catId) return t;
+    return t + x.amount;
+  }, 0);
+}
+function spendPerDay(s, ym, catId, today){
+  const d = daysElapsed(ym, today);
+  return d > 0 ? Math.floor(monthSpent(s, ym, catId) / d) : 0;
+}
+function monthAdded(s, ym){
+  return txns(s).reduce((t,x)=>
+    (x.type !== "expense" && ymOf(x.date) === ym) ? t + x.amount : t, 0);
+}
+
+/* ---------- monthly archive ---------- */
+function buildArchive(s, ym){
+  const ents = txns(s).filter(t => t.type === "expense" && ymOf(t.date) === ym);
+  const by = {};
+  for (const t of ents) by[t.categoryId] = (by[t.categoryId] || 0) + t.amount;
+  const spent = ents.reduce((a,t)=> a + t.amount, 0);
+  const days = daysInMonth(ym);
+  return {
+    ym, entries: ents.length, spent, days,
+    perDay: Math.floor(spent / days),
+    added: monthAdded(s, ym),
+    closingBalance: balanceAsOf(s, lastDayOf(ym)),
+    minBalance: s.settings.minBalance,
+    byCategory: Object.keys(by).map(id => {
+      const c = s.categories.find(c => c.id === id);
+      return { id, name: c ? c.name : "(removed)", total: by[id] };
+    }).sort((a,b)=> b.total - a.total),
+    closedAt: todayStr()
+  };
+}
+/* Archive records are summaries of live entries, so they must be rebuilt whenever
+   an entry in an already-closed month is edited or deleted. */
+function refreshArchive(s){
+  s.archive = s.archive.map(r => {
+    const fresh = buildArchive(s, r.ym);
+    fresh.closedAt = r.closedAt;          // keep when it was actually closed
+    return fresh;
+  }).sort((a,b)=> a.ym < b.ym ? 1 : -1);
+  return s.archive;
+}
+/* Runs on boot and after every change. Summarises each finished month that has
+   entries and isn't archived yet. Never deletes the underlying entries. */
+function rolloverIfNeeded(s, nowYm){
+  nowYm = nowYm || curYm();
+  if (!s.meta.lastSeenMonth) s.meta.lastSeenMonth = nowYm;
+  if (s.meta.lastSeenMonth >= nowYm) return [];
+  const closed = [];
+  let m = s.meta.lastSeenMonth;
+  while (m < nowYm){
+    if (!s.archive.some(a => a.ym === m)){
+      const rec = buildArchive(s, m);
+      if (rec.entries > 0 || rec.added !== 0){ s.archive.push(rec); closed.push(m); }
+    }
+    m = shiftMonth(m, 1);
+  }
+  s.archive.sort((a,b)=> a.ym < b.ym ? 1 : -1);
+  s.meta.lastSeenMonth = nowYm;
+  if (closed.length) s.meta.pendingBackup = closed[closed.length-1];
+  return closed;
+}
+
+/* ============================ MERGE ============================
+   Two devices editing the same data can't be resolved by "newest file wins" —
+   that throws away whatever the other device did. Instead every row carries an
+   id and an updatedAt, so merging is a union: keep every row either side knows
+   about, and for rows both sides have, keep the one edited most recently.
+   Deletes are tombstones, so they merge like any other edit.                */
+function pickNewer(x, y){
+  const tx = x.updatedAt || 0, ty = y.updatedAt || 0;
+  if (tx !== ty) return tx > ty ? x : y;
+  // Same timestamp (or both legacy rows): break the tie the same way on every
+  // device, so two devices never settle on different answers.
+  const sx = JSON.stringify(x), sy = JSON.stringify(y);
+  return sx >= sy ? x : y;
+}
+function mergeRows(a, b){
+  const m = new Map();
+  for (const x of a || []) m.set(x.id, x);
+  for (const y of b || []){
+    const prev = m.get(y.id);
+    m.set(y.id, prev ? pickNewer(prev, y) : y);
+  }
+  // Sort by id so the merged file is identical whichever device produced it.
+  return sortById([...m.values()]);
+}
+/* Merges remote into local and returns a fresh state. Never mutates either. */
+function mergeStates(local, remote){
+  if (!remote) return noteClock(normalizeState(local));
+  if (!local) return noteClock(normalizeState(remote));
+  const lt = local.settings.updatedAt || 0, rt = remote.settings.updatedAt || 0;
+  const lm = local.meta.initialBalanceUpdatedAt || 0, rm = remote.meta.initialBalanceUpdatedAt || 0;
+  const out = {
+    version: 3,
+    settings: rt > lt ? remote.settings : local.settings,
+    categories: mergeRows(local.categories, remote.categories),
+    transactions: mergeRows(local.transactions, remote.transactions),
+    owed: mergeRows(local.owed, remote.owed),
+    archive: [],
+    meta: Object.assign({}, local.meta, {
+      initialBalance: rm > lm ? remote.meta.initialBalance : local.meta.initialBalance,
+      initialBalanceUpdatedAt: Math.max(lm, rm),
+      createdAt: [local.meta.createdAt, remote.meta.createdAt].filter(Boolean).sort()[0] || todayStr(),
+      lastSeenMonth: (remote.meta.lastSeenMonth || "") > (local.meta.lastSeenMonth || "")
+                     ? remote.meta.lastSeenMonth : local.meta.lastSeenMonth,
+      savedAt: (remote.meta.savedAt || "") > (local.meta.savedAt || "") ? remote.meta.savedAt : local.meta.savedAt
+    })
+  };
+  // Archived months are the union of both sides; the figures are recomputed
+  // from the merged entries, so a stale summary can never survive a merge.
+  const months = new Set([...(local.archive||[]).map(r=>r.ym), ...(remote.archive||[]).map(r=>r.ym)]);
+  out.archive = [...months].map(ym => {
+    const l = (local.archive||[]).find(r=>r.ym===ym), r = (remote.archive||[]).find(r=>r.ym===ym);
+    const rec = buildArchive(out, ym);
+    rec.closedAt = [l && l.closedAt, r && r.closedAt].filter(Boolean).sort()[0] || todayStr();
+    return rec;
+  }).sort((a,b)=> a.ym < b.ym ? 1 : -1);
+  // Outstanding amounts are derived, so re-derive them against merged payments.
+  out.owed.forEach(o => { if (!o.deleted) syncOwed(out, o); });
+  return noteClock(normalizeState(out));
+}
+
+/* ============================ STORAGE ============================ */
+function idb(){
+  return new Promise((res, rej)=>{
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(DB_STORE)) r.result.createObjectStore(DB_STORE); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function idbDo(mode, fn){
+  return idb().then(db => new Promise((res, rej)=>{
+    const tx = db.transaction(DB_STORE, mode);
+    const req = fn(tx.objectStore(DB_STORE));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error);
+  }));
+}
+const idbGet = k => idbDo("readonly",  st => st.get(k));
+const idbSet = (k,v) => idbDo("readwrite", st => st.put(v, k));
+const idbDel = k => idbDo("readwrite", st => st.delete(k));
+
+const Store = {
+  handle: null,          // FileSystemFileHandle, if a data file is linked
+  fileOk: false,         // permission currently granted
+  needsReconnect: false, // handle exists but permission must be re-granted
+  persisted: false,      // navigator.storage.persist() granted
+  status: "",            // "", "saving", "saved", "error"
+  error: "",
+
+  async readFile(){
+    try {
+      const f = await this.handle.getFile();
+      const txt = await f.text();
+      return txt.trim() ? JSON.parse(txt) : null;
+    } catch(e){ console.warn("Could not read data file:", e); return null; }
+  },
+  async writeFile(json){
+    const w = await this.handle.createWritable();
+    await w.write(json);
+    await w.close();
+  },
+
+  /* Pick the newest of: IndexedDB, localStorage mirror, linked file. */
+  async boot(){
+    let best = null, from = "nothing";
+    const consider = (d, label) => {
+      if (!d || typeof d !== "object") return;
+      const t = (d.meta && d.meta.savedAt) || "";
+      if (!best || t > ((best.meta && best.meta.savedAt) || "")){ best = d; from = label; }
+    };
+    try { consider(await idbGet("state"), "IndexedDB"); } catch(e){ console.warn("IndexedDB unavailable:", e); }
+    try { const raw = localStorage.getItem(KEY); if (raw) consider(JSON.parse(raw), "browser storage"); }
+    catch(e){ console.warn("localStorage unavailable:", e); }
+
+    try {
+      const h = await idbGet("handle");
+      if (h){
+        this.handle = h;
+        const p = await h.queryPermission({ mode:"readwrite" });
+        if (p === "granted"){ this.fileOk = true; consider(await this.readFile(), "data file"); }
+        else this.needsReconnect = true;
+      }
+    } catch(e){ console.warn("No linked data file:", e); }
+
+    try { if (navigator.storage && navigator.storage.persist) this.persisted = await navigator.storage.persist(); }
+    catch(e){ /* not fatal */ }
+
+    this.loadedFrom = from;
+    return best ? migrate(best) : null;
+  },
+
+  /* Saves are queued so two quick actions can never interleave their writes
+     and leave one store holding an older snapshot than another. */
+  _chain: Promise.resolve(),
+  save(s){
+    this._chain = this._chain.then(() => this._write(s), () => this._write(s));
+    return this._chain;
+  },
+  async _write(s){
+    s.meta.savedAt = new Date().toISOString();
+    const json = JSON.stringify(s);
+    this.status = "saving"; paintSave();
+    let anyOk = false;
+    // localStorage first: it's synchronous, so even a hard close right here
+    // leaves the newest data on disk.
+    try { localStorage.setItem(KEY, json); anyOk = true; } catch(e){ console.warn("localStorage write failed:", e); }
+    try { await idbSet("state", JSON.parse(json)); anyOk = true; } catch(e){ console.warn("IndexedDB write failed:", e); }
+    if (this.handle && this.fileOk){
+      try { await this.writeFile(json); anyOk = true; }
+      catch(e){ this.fileOk = false; this.needsReconnect = true; console.warn("File write failed:", e); render(); }
+    }
+    this.status = anyOk ? "saved" : "error";
+    this.error = anyOk ? "" : "Could not save. Export a backup now.";
+    paintSave();
+    return anyOk;
+  }
+};
+
+function paintSave(){
+  const el = document.getElementById("saveInd");
+  if (!el) return;
+  const f = Store.handle && Store.fileOk ? " · file linked" : "";
+  el.className = "save-ind" + (Store.status === "error" ? " err" : "");
+  el.textContent = Store.status === "saving" ? "Saving…"
+                 : Store.status === "error"  ? "⚠ " + Store.error
+                 : Store.status === "saved"  ? "Saved" + f : f.replace(/^ · /,"");
+}
+
+function migrate(d){
+  if (!d || typeof d !== "object") return null;
+  if (!d.version) d.version = 1;
+  d.settings   = Object.assign({ minBalance:0, includeOwed:true }, d.settings);
+  d.meta       = Object.assign({ initialBalance:0, createdAt:todayStr(), savedAt:"" }, d.meta);
+  d.categories = d.categories || [];
+  d.transactions = d.transactions || [];
+  d.owed       = d.owed || [];
+  d.archive    = d.archive || [];                       // added in v2
+  // v3: every row needs an id and an updatedAt so it can be merged across devices.
+  const seed = Date.parse(d.meta.savedAt || "") || 1;
+  [d.categories, d.transactions, d.owed].forEach(list => list.forEach(x => {
+    if (!x.id) x.id = uid();
+    if (typeof x.updatedAt !== "number") x.updatedAt = seed;
+  }));
+  if (typeof d.settings.updatedAt !== "number") d.settings.updatedAt = seed;
+  if (typeof d.meta.initialBalanceUpdatedAt !== "number") d.meta.initialBalanceUpdatedAt = seed;
+  // Self-heal owed entries against their payment history.
+  d.owed.forEach(o => { if (o.remaining == null) o.remaining = o.amount; if (!o.deleted) syncOwed(d, o); });
+  if (!d.meta.lastSeenMonth) d.meta.lastSeenMonth = curYm();
+  delete d.meta.lastBackupMonth;                        // replaced by rollover
+  d.version = 3;
+  return noteClock(d);
+}
+function freshState(initial, min){
+  const now = nowTs();
+  return {
+    version: 3,
+    settings: { minBalance: min, includeOwed: true, updatedAt: now },
+    categories: BUILTIN_CATS.map(n => ({ id: uid(), name: n, builtin: true, archived: false, updatedAt: now })),
+    transactions: [], owed: [], archive: [],
+    meta: { initialBalance: initial, initialBalanceUpdatedAt: now,
+            createdAt: todayStr(), lastSeenMonth: curYm(), savedAt: "" }
+  };
+}
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+/* ---------- app state ---------- */
+let state = null;
+let ui = { tab:"dash", month: curYm(), cat:"all" };
+
+function commit(){
+  rolloverIfNeeded(state);
+  refreshArchive(state);
+  render();
+  Store.save(state).catch(e => console.error(e));
+  queueSync();
+}
+
+/* ---------- file linking ---------- */
+async function linkNewFile(){
+  if (!window.showSaveFilePicker) return alert("This browser can't link a data file. Use Chrome or Edge — your data is still saved in the browser either way.");
+  try {
+    const h = await window.showSaveFilePicker({
+      suggestedName: "expense-data.json",
+      types: [{ description:"Expense tracker data", accept:{ "application/json":[".json"] } }]
+    });
+    Store.handle = h; Store.fileOk = true; Store.needsReconnect = false;
+    await idbSet("handle", h);
+    await Store.save(state);
+    closeDlg(); render();
+    alert("Linked. Every change now writes straight to that file as well.");
+  } catch(e){
+    if (e.name === "AbortError") return;
+    alert("Could not link a file: " + e.message + "\n\nYour data is still saved in this browser.");
+  }
+}
+async function openExistingFile(){
+  if (!window.showOpenFilePicker) return alert("This browser can't open a data file directly. Use Settings → Import instead.");
+  try {
+    const [h] = await window.showOpenFilePicker({
+      types: [{ description:"Expense tracker data", accept:{ "application/json":[".json"] } }]
+    });
+    Store.handle = h; Store.fileOk = true; Store.needsReconnect = false;
+    const d = migrate(await Store.readFile());
+    if (d && Array.isArray(d.transactions)){
+      if (!state || confirm("Load the data from that file? Your current data is replaced (a backup downloads first).")){
+        if (state) exportNow("before-open-" + todayStr());
+        state = d;
+      }
+    }
+    await idbSet("handle", h);
+    await Store.save(state);
+    closeDlg(); render();
+  } catch(e){
+    if (e.name === "AbortError") return;
+    alert("Could not open that file: " + e.message);
+  }
+}
+async function reconnectFile(){
+  try {
+    const p = await Store.handle.requestPermission({ mode:"readwrite" });
+    if (p === "granted"){
+      Store.fileOk = true; Store.needsReconnect = false;
+      const d = migrate(await Store.readFile());
+      if (d && d.meta && d.meta.savedAt > (state.meta.savedAt || "")){
+        if (confirm("That file is newer than what's in this browser. Load it?")) state = d;
+      }
+      await Store.save(state); render();
+    }
+  } catch(e){ alert("Could not reconnect: " + e.message); }
+}
+async function unlinkFile(){
+  Store.handle = null; Store.fileOk = false; Store.needsReconnect = false;
+  await idbDel("handle"); closeDlg(); render();
+}
+
+/* ---------- backups ---------- */
+function download(name, text){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], {type:"application/json"}));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
+}
+function exportNow(tag){ download("expense-backup-" + (tag || todayStr()) + ".json", JSON.stringify(state, null, 2)); }
+function exportMonth(ym){
+  const rec = state.archive.find(a => a.ym === ym) || buildArchive(state, ym);
+  const entries = txns(state).filter(t => ymOf(t.date) === ym);
+  download("expenses-" + ym + ".json", JSON.stringify({ month:ym, summary:rec, entries }, null, 2));
+}
+
+/* ---------- helpers ---------- */
+function esc(s){ return String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function catName(id){ const c = state.categories.find(c => c.id === id); return c ? c.name : "(removed category)"; }
+function activeCats(){ return catRows(state).filter(c => !c.archived); }
+function sortedExpenses(list){
+  return list.slice().sort((a,b)=> a.date === b.date ? (b.id > a.id ? 1 : -1) : (a.date < b.date ? 1 : -1));
+}
+
+/* ============================ RENDER ============================ */
+function render(){
+  if (!state){ renderSetup(); paintSave(); return; }
+  for (const b of document.querySelectorAll("#tabs button"))
+    b.classList.toggle("on", b.dataset.id === ui.tab);
+  document.getElementById("view").innerHTML =
+      ui.tab === "dash" ? viewDash()
+    : ui.tab === "exp"  ? viewExpenses()
+    : ui.tab === "arch" ? viewArchive()
+    : viewOwed();
+  const old = document.querySelector(".fab"); if (old) old.remove();
+  if (ui.tab === "dash" || ui.tab === "exp"){
+    const b = document.createElement("button");
+    b.className = "btn primary fab"; b.dataset.act = "addExpense"; b.textContent = "+ Add expense";
+    document.body.appendChild(b);
+  }
+  paintSave(); paintSync();
+}
+
+function storageBanners(){
+  let h = "";
+  if (Store.needsReconnect)
+    h += `<div class="banner info"><span class="grow">Your data file isn't connected this session
+      — changes are saving to the browser only.</span>
+      <button class="btn sm primary" data-act="reconnect">Reconnect file</button></div>`;
+  if (Store.status === "error")
+    h += `<div class="banner bad"><span class="grow"><strong>Data isn't saving.</strong> ${esc(Store.error)}</span>
+      <button class="btn sm" data-act="export">Export now</button></div>`;
+  if (state.meta.pendingBackup && !(Store.handle && Store.fileOk))
+    h += `<div class="banner info"><span class="grow">${esc(monthLabel(state.meta.pendingBackup))}
+      is archived. Grab a backup file while you're here.</span>
+      <button class="btn sm primary" data-act="doPendingBackup">Download backup</button>
+      <button class="btn sm" data-act="dismissBackup">Later</button></div>`;
+  return h;
+}
+
+function viewDash(){
+  const cur = curBalance(state), ot = owedTotal(state), av = available(state);
+  const min = state.settings.minBalance, ym = curYm();
+  const left = daysRemaining(ym), per = avgPerDay(state);
+  const spent = monthSpent(state, ym, null), sper = spendPerDay(state, ym, null);
+  const el = daysElapsed(ym);
+  const lastArch = state.archive[0];
+
+  let banner = storageBanners();
+  if (cur < min) banner += `<div class="banner bad"><span class="grow"><strong>Below your minimum balance.</strong>
+      You have ${esc(fmt(cur))} but your floor is ${esc(fmt(min))}.</span></div>`;
+  else if (av <= 0) banner += `<div class="banner bad"><span class="grow"><strong>Nothing left to spend.</strong>
+      Everything above your minimum balance is used up.</span></div>`;
+
+  const allHist = sortedExpenses(txns(state).filter(t => t.type !== "expense"));
+  const hist = ui.allHistory ? allHist : allHist.slice(0, 10);
+
+  return `
+  ${banner}
+  <div class="card hero">
+    <div class="lbl">Available to spend</div>
+    <div class="amt ${av > 0 ? "good" : "bad"}">${esc(fmt(av))}</div>
+    <div style="color:var(--muted);font-size:13px">
+      current ${esc(fmt(cur))} − min ${esc(fmt(min))}${state.settings.includeOwed && ot ? " + owed " + esc(fmt(ot)) : ""}
+    </div>
+    <label class="toggle">
+      <input type="checkbox" data-act="toggleOwed" ${state.settings.includeOwed ? "checked" : ""}>
+      Include owed money (${esc(fmt(ot))}) in available
+    </label>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="k">Spendable / day</div>
+      <div class="v ${per > 0 ? "" : "bad"}">${esc(fmt(per))}</div>
+      <div class="sub">${left} day${left === 1 ? "" : "s"} left in ${esc(monthLabel(ym))}</div></div>
+    <div class="stat"><div class="k">Current balance</div>
+      <div class="v">${esc(fmt(cur))}</div>
+      <div class="sub"><button class="btn sm" data-act="addMoney">+ Add money</button>
+        <button class="btn sm" data-act="adjust">Adjust</button></div></div>
+    <div class="stat"><div class="k">Minimum balance</div>
+      <div class="v">${esc(fmt(min))}</div>
+      <div class="sub"><button class="btn sm" data-act="editMin">Change floor</button></div></div>
+    <div class="stat"><div class="k">Owed to me</div>
+      <div class="v">${esc(fmt(ot))}</div>
+      <div class="sub"><button class="btn sm" data-act="tab" data-id="owed">Manage</button></div></div>
+  </div>
+
+  <h2>${esc(monthLabel(ym))} — day ${el} of ${daysInMonth(ym)}</h2>
+  <div class="grid">
+    <div class="stat"><div class="k">Spent this month</div><div class="v">${esc(fmt(spent))}</div>
+      <div class="sub">${el === 1 ? "first day of a fresh month" : "over " + el + " days"}</div></div>
+    <div class="stat"><div class="k">Spent / day so far</div><div class="v">${esc(fmt(sper))}</div>
+      <div class="sub">vs ${esc(fmt(per))}/day available</div></div>
+    ${lastArch ? `<div class="stat"><div class="k">${esc(monthLabel(lastArch.ym))} (archived)</div>
+      <div class="v">${esc(fmt(lastArch.spent))}</div>
+      <div class="sub">${esc(fmt(lastArch.perDay))}/day · <button class="btn sm" data-act="tab" data-id="arch">Archive</button></div></div>` : ""}
+  </div>
+
+  <h2>Balance history</h2>
+  <div class="card">
+    ${hist.length ? `<ul class="list">${hist.map(t => {
+      const isRec = t.type === "received";
+      const lbl = t.type === "add" ? "Money added" : isRec ? "Owed received" : "Adjustment";
+      return `<li>
+        <div class="li-main"><div>${esc(lbl)}${t.note ? " — " + esc(t.note) : ""}</div>
+          <div class="li-sub">${esc(prettyDate(t.date))}</div></div>
+        <div class="li-amt ${t.amount < 0 ? "bad" : "good"}">${t.amount < 0 ? "" : "+"}${esc(fmt(t.amount))}</div>
+        ${isRec ? `<span class="pill">from owed</span>` : ""}
+        <button class="btn sm" data-act="editTxn" data-id="${esc(t.id)}">Edit</button>
+      </li>`;
+    }).join("")}</ul>
+    ${allHist.length > 10 ? `<div style="text-align:center;margin-top:10px">
+      <button class="btn sm" data-act="toggleHistory">${ui.allHistory
+        ? "Show fewer" : "Show all " + allHist.length}</button></div>` : ""}`
+    : `<div class="empty">No money added yet. Use “+ Add money” when you top up.</div>`}
+  </div>`;
+}
+
+function viewExpenses(){
+  const ym = ui.month, cats = activeCats();
+  const inMonth = txns(state).filter(t => t.type === "expense" && ymOf(t.date) === ym);
+  const shown = sortedExpenses(inMonth.filter(t => ui.cat === "all" || t.categoryId === ui.cat));
+  const total = monthSpent(state, ym, ui.cat), per = spendPerDay(state, ym, ui.cat);
+  const el = daysElapsed(ym), isCur = ym === curYm();
+  const archived = state.archive.some(a => a.ym === ym);
+
+  const chips = [`<button class="chip ${ui.cat === "all" ? "on" : ""}" data-act="chip" data-id="all">All
+      <span class="t">${esc(fmt(monthSpent(state, ym, null)))}</span></button>`]
+    .concat(cats.map(c => {
+      const t = monthSpent(state, ym, c.id);
+      return `<button class="chip ${ui.cat === c.id ? "on" : ""}" data-act="chip" data-id="${esc(c.id)}">
+        ${esc(c.name)}${t ? `<span class="t">${esc(fmt(t))}</span>` : ""}</button>`;
+    })).join("");
+
+  return `
+  <div class="row between" style="margin-bottom:12px">
+    <div class="row">
+      <button class="btn sm" data-act="prevMonth">&lsaquo;</button>
+      <strong>${esc(monthLabel(ym))}</strong>
+      <button class="btn sm" data-act="nextMonth">&rsaquo;</button>
+      ${isCur ? `<span class="pill">in progress</span>` : `<button class="btn sm" data-act="thisMonth">Today</button>`}
+      ${archived ? `<span class="pill">archived</span>` : ""}
+    </div>
+  </div>
+
+  <div class="chips">${chips}</div>
+
+  <div class="grid" style="margin:12px 0 4px">
+    <div class="stat"><div class="k">Spent${ui.cat === "all" ? "" : " — " + esc(catName(ui.cat))}</div>
+      <div class="v">${esc(fmt(total))}</div><div class="sub">${shown.length} entr${shown.length === 1 ? "y" : "ies"}</div></div>
+    <div class="stat"><div class="k">Per day</div><div class="v">${esc(fmt(per))}</div>
+      <div class="sub">over ${el} day${el === 1 ? "" : "s"}${isCur ? " so far" : ""}</div></div>
+  </div>
+
+  <h2>Entries</h2>
+  <div class="card">
+    ${shown.length ? `<ul class="list">${shown.map(t => `<li>
+        <div class="li-main">
+          <div>${esc(catName(t.categoryId))}${t.note ? ` <span style="color:var(--muted)">· ${esc(t.note)}</span>` : ""}</div>
+          <div class="li-sub">${esc(prettyDate(t.date))}</div>
+        </div>
+        <div class="li-amt">${esc(fmt(t.amount))}</div>
+        <button class="btn sm" data-act="editExpense" data-id="${esc(t.id)}">Edit</button>
+      </li>`).join("")}</ul>`
+      : `<div class="empty">Nothing logged here yet.</div>`}
+  </div>`;
+}
+
+function viewArchive(){
+  const ym = curYm();
+  const live = buildArchive(state, ym);
+  const lifetime = state.archive.reduce((a,r)=> a + r.spent, 0) + live.spent;
+
+  const card = (r, isLive) => {
+    const max = r.byCategory.length ? r.byCategory[0].total : 1;
+    return `<div class="card">
+      <div class="row between">
+        <div><strong style="font-size:16px">${esc(monthLabel(r.ym))}</strong>
+          ${isLive ? `<span class="pill">in progress</span>` : `<span class="pill">archived</span>`}</div>
+        <div class="row">
+          <button class="btn sm" data-act="viewMonth" data-id="${esc(r.ym)}">Entries</button>
+          <button class="btn sm" data-act="exportMonth" data-id="${esc(r.ym)}">Export</button>
+        </div>
+      </div>
+      <div class="grid" style="margin:12px 0">
+        <div class="stat"><div class="k">Spent</div><div class="v">${esc(fmt(r.spent))}</div>
+          <div class="sub">${r.entries} entr${r.entries === 1 ? "y" : "ies"}</div></div>
+        <div class="stat"><div class="k">Per day</div>
+          <div class="v">${esc(fmt(isLive ? spendPerDay(state, r.ym, null) : r.perDay))}</div>
+          <div class="sub">${isLive ? "so far this month" : "across " + r.days + " days"}</div></div>
+        <div class="stat"><div class="k">Money added</div><div class="v">${esc(fmt(r.added))}</div></div>
+        <div class="stat"><div class="k">${isLive ? "Balance now" : "Closing balance"}</div>
+          <div class="v">${esc(fmt(isLive ? curBalance(state) : r.closingBalance))}</div></div>
+      </div>
+      ${r.byCategory.length ? `<ul class="list">${r.byCategory.map(c => `<li>
+          <div class="li-main" style="max-width:190px">${esc(c.name)}</div>
+          <div class="bartrack"><div class="bar" style="width:${Math.max(3, Math.round(c.total/max*100))}%"></div></div>
+          <div class="li-amt">${esc(fmt(c.total))}</div>
+        </li>`).join("")}</ul>` : `<div class="empty">No spending recorded.</div>`}
+    </div>`;
+  };
+
+  return `
+  ${storageBanners()}
+  <div class="grid" style="margin-bottom:16px">
+    <div class="stat"><div class="k">Months archived</div><div class="v">${state.archive.length}</div>
+      <div class="sub">closed automatically on the 1st</div></div>
+    <div class="stat"><div class="k">Spent all time</div><div class="v">${esc(fmt(lifetime))}</div>
+      <div class="sub">including this month</div></div>
+  </div>
+
+  <h2>This month</h2>
+  ${card(live, true)}
+
+  <h2>Archived months</h2>
+  ${state.archive.length ? state.archive.map(r => card(r, false)).join("")
+    : `<div class="card"><div class="empty">Nothing archived yet.<br>
+        When ${esc(monthLabel(ym))} ends, it gets summarised here automatically and
+        the dashboard starts fresh. Your entries are never deleted.</div></div>`}`;
+}
+
+function viewOwed(){
+  const open   = owedRows(state).filter(o => o.status === "open");
+  const closed = owedRows(state).filter(o => o.status !== "open")
+                   .sort((a,b)=> (b.dateClosed || "") < (a.dateClosed || "") ? -1 : 1);
+  return `
+  ${storageBanners()}
+  <div class="card hero">
+    <div class="lbl">Owed to me</div>
+    <div class="amt">${esc(fmt(owedTotal(state)))}</div>
+    <div style="color:var(--muted);font-size:13px">
+      ${state.settings.includeOwed ? "Counted in your available balance" : "Not counted in available (toggle is off)"}
+    </div>
+  </div>
+
+  <div class="row between"><h2 style="margin:0">Open</h2>
+    <button class="btn primary sm" data-act="addOwed">+ Add owed</button></div>
+  <div class="card">
+    ${open.length ? `<ul class="list">${open.map(o => `<li>
+        <div class="li-main">
+          <div>${esc(o.label)}${o.remaining !== o.amount ? ` <span class="pill">part paid of ${esc(fmt(o.amount))}</span>` : ""}</div>
+          <div class="li-sub">${esc(prettyDate(o.dateAdded))}${o.note ? " · " + esc(o.note) : ""}</div>
+        </div>
+        <div class="li-amt">${esc(fmt(o.remaining))}</div>
+        <button class="btn sm primary" data-act="receiveFull" data-id="${esc(o.id)}">Received</button>
+        <button class="btn sm" data-act="receivePart" data-id="${esc(o.id)}">Part</button>
+        <button class="btn sm" data-act="editOwed" data-id="${esc(o.id)}">Edit</button>
+        <button class="btn sm danger" data-act="writeOff" data-id="${esc(o.id)}">Write off</button>
+      </li>`).join("")}</ul>`
+      : `<div class="empty">Nobody owes you anything right now.</div>`}
+  </div>
+
+  <details ${closed.length ? "" : "hidden"}>
+    <summary>History (${closed.length})</summary>
+    <div class="card"><ul class="list">${closed.map(o => `<li>
+        <div class="li-main"><div>${esc(o.label)}</div>
+          <div class="li-sub">${o.status === "received" ? "Received" : "Written off"} ${esc(prettyDate(o.dateClosed || o.dateAdded))}</div></div>
+        <div class="li-amt" style="color:var(--muted)">${esc(fmt(o.amount))}</div>
+        <button class="btn sm" data-act="reopenOwed" data-id="${esc(o.id)}">Reopen</button>
+        <button class="btn sm" data-act="editOwed" data-id="${esc(o.id)}">Edit</button>
+        <button class="btn sm danger" data-act="delOwed" data-id="${esc(o.id)}">Delete</button>
+      </li>`).join("")}</ul></div>
+  </details>`;
+}
+
+function renderSetup(){
+  document.getElementById("view").innerHTML = `
+    <div class="card setup">
+      <h3 style="margin-top:0">Let's set up</h3>
+      <p style="color:var(--muted);font-size:14px;margin-top:0">
+        Two numbers to start. You can change both later in Settings.</p>
+      <label><span>Money you have right now</span>
+        <input id="s-cur" class="amount-in" type="text" inputmode="decimal" placeholder="0"></label>
+      <label><span>Minimum balance (the floor you never want to go below)</span>
+        <input id="s-min" class="amount-in" type="text" inputmode="decimal" placeholder="0"></label>
+      <div class="err" id="s-err"></div>
+      <button class="btn primary" data-act="doSetup" style="width:100%;padding:11px">Start tracking</button>
+    </div>`;
+  const f = document.getElementById("s-cur"); if (f) f.focus();
+}
+
+/* ============================ DIALOGS ============================ */
+const dlg = document.getElementById("dlg");
+function closeDlg(){ if (dlg.open) dlg.close(); dlg.innerHTML = ""; }
+function openDlg(title, bodyHtml, onSubmit, extraBtnsHtml){
+  dlg.innerHTML = `<form method="dialog"><h3>${esc(title)}</h3>${bodyHtml}
+    <div class="err" id="d-err"></div>
+    <div class="dlg-actions">${extraBtnsHtml || ""}
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="submit" class="btn primary">Save</button></div></form>`;
+  dlg.querySelector("[data-close]").onclick = closeDlg;
+  dlg.querySelector("form").onsubmit = e => {
+    e.preventDefault();
+    const err = onSubmit(new FormData(e.target), dlg);
+    if (err) dlg.querySelector("#d-err").textContent = err;
+    else { closeDlg(); commit(); }
+  };
+  dlg.showModal();
+  const first = dlg.querySelector("input:not([type=hidden]),select,textarea");
+  if (first){ first.focus(); if (first.select) first.select(); }
+}
+const fAmount = v => `<label><span>Amount (₹)</span>
+  <input class="amount-in" name="amount" type="text" inputmode="decimal" autocomplete="off"
+   placeholder="0" value="${esc(v == null ? "" : toInput(v))}"></label>`;
+const fDate = v => `<label><span>Date</span><input name="date" type="date" value="${esc(v || todayStr())}"></label>`;
+const fNote = v => `<label><span>Note (optional)</span>
+  <input name="note" type="text" autocomplete="off" value="${esc(v || "")}"></label>`;
+const fCat = sel => `<label><span>Category</span><select name="cat">${
+  activeCats().map(c => `<option value="${esc(c.id)}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("")
+}</select></label>`;
+
+function dlgExpense(existing){
+  const cats = activeCats();
+  if (!cats.length){ alert("Add a category first (Settings → Categories)."); return; }
+  const preset = existing ? existing.categoryId : (ui.cat !== "all" ? ui.cat : cats[0].id);
+  openDlg(existing ? "Edit expense" : "Add expense",
+    fAmount(existing && existing.amount) + fCat(preset)
+      + fDate(existing && existing.date) + fNote(existing && existing.note),
+    fd => {
+      const amt = parseMoney(fd.get("amount"));
+      if (amt == null) return "Enter an amount greater than zero.";
+      const date = fd.get("date"); if (!date) return "Pick a date.";
+      if (existing) stamp(Object.assign(existing, { amount:amt, categoryId:fd.get("cat"), date, note:fd.get("note").trim() }));
+      else state.transactions.push(stamp({ id:uid(), type:"expense", categoryId:fd.get("cat"),
+                                     amount:amt, date, note:fd.get("note").trim() }));
+      if (!existing && ymOf(date) !== ui.month) ui.month = ymOf(date);
+    },
+    existing ? `<button type="button" class="btn danger spacer" data-del>Delete</button>` : "");
+  if (existing) dlg.querySelector("[data-del]").onclick = () => {
+    if (!confirm("Delete this expense? Your balance goes back up by " + fmt(existing.amount) + ".")) return;
+    tombstone(existing);
+    closeDlg(); commit();
+  };
+}
+
+function dlgSimpleTxn(type){
+  const isAdj = type === "adjust";
+  openDlg(isAdj ? "Adjust balance" : "Add money",
+    (isAdj ? `<p style="color:var(--muted);font-size:13px;margin-top:0">
+        Correct your balance when it drifts from reality. Negative is allowed (e.g. -150).</p>` : "")
+    + fAmount(null) + fDate(null) + fNote(null),
+    fd => {
+      const amt = parseMoney(fd.get("amount"), isAdj);
+      if (amt == null) return isAdj ? "Enter a non-zero amount (negative is fine)."
+                                    : "Enter an amount greater than zero.";
+      const date = fd.get("date"); if (!date) return "Pick a date.";
+      state.transactions.push(stamp({ id:uid(), type, amount:amt, date, note:fd.get("note").trim() }));
+    });
+}
+
+/* Edit any non-expense entry: money added, a balance adjustment, or a payment
+   received against an owed entry (which can also be undone here). */
+function dlgTxn(t){
+  if (!t) return;
+  const isAdj = t.type === "adjust", isRec = t.type === "received";
+  const o = isRec ? owedRows(state).find(x => x.id === t.owedId) : null;
+  const otherGot = isRec ? receivedFor(state, t.owedId) - t.amount : 0;
+  const title = t.type === "add" ? "Edit money added"
+              : isAdj ? "Edit adjustment" : "Edit payment received";
+  const intro = !isRec ? ""
+    : o ? `<p style="color:var(--muted);font-size:13px;margin-top:0">Against “${esc(o.label)}” —
+            ${esc(fmt(o.amount))} owed in total${otherGot ? ", " + esc(fmt(otherGot)) + " received in other payments" : ""}.</p>`
+        : `<p style="color:var(--muted);font-size:13px;margin-top:0">The owed entry this came from was deleted.</p>`;
+
+  openDlg(title, intro + fAmount(t.amount) + fDate(t.date) + fNote(t.note),
+    fd => {
+      const amt = parseMoney(fd.get("amount"), isAdj);
+      if (amt == null) return isAdj ? "Enter a non-zero amount (negative is fine)."
+                                    : "Enter an amount greater than zero.";
+      if (isRec && o && amt + otherGot > o.amount)
+        return "That's more than the " + fmt(o.amount - otherGot) + " still outstanding on this.";
+      const date = fd.get("date"); if (!date) return "Pick a date.";
+      t.amount = amt; t.date = date; t.note = fd.get("note").trim(); stamp(t);
+      if (o) stamp(syncOwed(state, o));
+    },
+    `<button type="button" class="btn danger spacer" data-del>${isRec ? "Undo payment" : "Delete"}</button>`);
+
+  dlg.querySelector("[data-del]").onclick = () => {
+    const msg = isRec
+      ? (o ? "Undo this payment?\n\n" + fmt(t.amount) + " comes back out of your current balance and "
+             + o.label + " owes it again."
+           : "Delete this payment? Your current balance drops by " + fmt(t.amount) + ".")
+      : "Delete this " + (t.type === "add" ? "top-up" : "adjustment") + " of " + fmt(t.amount) + "?";
+    if (!confirm(msg)) return;
+    tombstone(t);
+    if (o) stamp(syncOwed(state, o));
+    closeDlg(); commit();
+  };
+}
+
+function dlgOwedAdd(){
+  openDlg("Add owed money",
+    `<label><span>Who owes you / what for</span>
+      <input name="label" type="text" autocomplete="off" placeholder="e.g. Rahul — dinner"></label>`
+    + fAmount(null) + fDate(null) + fNote(null),
+    fd => {
+      const label = fd.get("label").trim(); if (!label) return "Add a name or label.";
+      const amt = parseMoney(fd.get("amount")); if (amt == null) return "Enter an amount greater than zero.";
+      const date = fd.get("date"); if (!date) return "Pick a date.";
+      state.owed.push(stamp({ id:uid(), label, amount:amt, remaining:amt, dateAdded:date,
+                        note:fd.get("note").trim(), status:"open", dateClosed:null }));
+    });
+}
+/* Receiving moves owed money into current balance, so AVAILABLE is unchanged. */
+function receive(o, amount, date){
+  state.transactions.push(stamp({ id:uid(), type:"received", owedId:o.id, amount, date, note:o.label }));
+  syncOwed(state, o);
+  if (o.status === "received") o.dateClosed = date;
+  stamp(o);
+}
+
+function dlgOwedEdit(o){
+  if (!o) return;
+  const got = receivedFor(state, o.id);
+  openDlg("Edit owed entry",
+    `<label><span>Who owes you / what for</span>
+      <input name="label" type="text" autocomplete="off" value="${esc(o.label)}"></label>`
+    + fAmount(o.amount) + fDate(o.dateAdded) + fNote(o.note)
+    + (got ? `<p style="color:var(--muted);font-size:13px">${esc(fmt(got))} already received against this
+        — edit or undo individual payments from the dashboard's balance history.</p>` : ""),
+    fd => {
+      const label = fd.get("label").trim(); if (!label) return "Add a name or label.";
+      const amt = parseMoney(fd.get("amount")); if (amt == null) return "Enter an amount greater than zero.";
+      if (amt < got) return "You've already received " + fmt(got) + " against this, so the total can't be less.";
+      const date = fd.get("date"); if (!date) return "Pick a date.";
+      o.label = label; o.amount = amt; o.dateAdded = date; o.note = fd.get("note").trim();
+      stamp(syncOwed(state, o));
+    },
+    `<button type="button" class="btn danger spacer" data-del>Delete</button>`);
+  dlg.querySelector("[data-del]").onclick = () => {
+    if (!confirm(got ? "Delete this entry?\n\nThe " + fmt(got) + " you already received stays in your balance."
+                     : "Delete this owed entry?")) return;
+    tombstone(o);
+    closeDlg(); commit();
+  };
+}
+function dlgReceivePart(o){
+  openDlg("Part payment from " + o.label,
+    `<p style="color:var(--muted);font-size:13px;margin-top:0">Outstanding: ${esc(fmt(o.remaining))}</p>`
+    + fAmount(null) + fDate(null),
+    fd => {
+      const amt = parseMoney(fd.get("amount"));
+      if (amt == null) return "Enter an amount greater than zero.";
+      if (amt > o.remaining) return "That's more than the " + fmt(o.remaining) + " outstanding.";
+      const date = fd.get("date"); if (!date) return "Pick a date.";
+      receive(o, amt, date);
+    });
+}
+
+function dlgSettings(){
+  const linked = Store.handle && Store.fileOk;
+  openDlg("Settings", `
+    <label><span>Minimum balance (₹)</span>
+      <input class="amount-in" name="min" type="text" inputmode="decimal" value="${esc(toInput(state.settings.minBalance))}"></label>
+    <label><span>Starting balance — what you had on day one</span>
+      <input class="amount-in" name="init" type="text" inputmode="decimal" value="${esc(toInput(state.meta.initialBalance))}"></label>
+    <label class="toggle" style="justify-content:flex-start">
+      <input type="checkbox" name="incl" ${state.settings.includeOwed ? "checked" : ""}> Include owed money in available by default</label>
+    <hr>
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Where your data lives</div>
+    <p style="font-size:13px;margin:0 0 8px;color:var(--muted)">
+      Saved in this browser (IndexedDB + local storage)${Store.persisted ? ", marked permanent so it won't be evicted" : ""}.
+      ${linked ? "Also written to your linked file on every change." : "Link a file to keep a real copy on disk that survives anything you do to the browser."}
+      ${state.meta.savedAt ? "<br>Last saved: " + esc(new Date(state.meta.savedAt).toLocaleString("en-IN")) : ""}
+    </p>
+    <div class="row">
+      ${linked ? `<button type="button" class="btn sm danger" data-act="unlinkFile">Unlink file</button>`
+               : `<button type="button" class="btn sm primary" data-act="linkFile">Link a data file</button>`}
+      <button type="button" class="btn sm" data-act="openFile">Open existing file</button>
+    </div>
+    <hr>
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Phone sync</div>
+    <p style="font-size:13px;margin:0 0 8px;color:var(--muted)">
+      ${Sync.on()
+        ? "On — syncing with <strong>" + esc(Sync.cfg.owner + "/" + Sync.cfg.repo) + "</strong>"
+          + (Sync.lastAt ? ", last synced " + esc(agoText(Sync.lastAt)) : "")
+          + (Sync.status === "error" ? `<br><span class="bad">Last attempt failed: ` + esc(Sync.error) + "</span>" : "")
+        : "Off — this device keeps its data to itself. Turn it on to share with your phone."}</p>
+    <div class="row">
+      <button type="button" class="btn sm ${Sync.on() ? "" : "primary"}" data-act="syncSetup">
+        ${Sync.on() ? "Sync settings" : "Set up phone sync"}</button>
+      ${Sync.on() ? `<button type="button" class="btn sm" data-act="syncNow">Sync now</button>` : ""}
+    </div>
+    <hr>
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Categories</div>
+    <ul class="list" style="max-height:170px;overflow:auto">${catRows(state).map(c => `<li>
+        <div class="li-main">${esc(c.name)}${c.archived ? ` <span class="pill">archived</span>` : ""}</div>
+        <button type="button" class="btn sm" data-act="renameCat" data-id="${esc(c.id)}">Rename</button>
+        <button type="button" class="btn sm" data-act="archiveCat" data-id="${esc(c.id)}">${c.archived ? "Restore" : "Archive"}</button>
+      </li>`).join("")}</ul>
+    <div class="row" style="margin-top:8px">
+      <input name="newcat" type="text" placeholder="New category name" style="flex:1">
+      <button type="button" class="btn sm" data-act="addCat">Add</button></div>
+    <hr>
+    <div class="row">
+      <button type="button" class="btn sm" data-act="export">Export backup</button>
+      <button type="button" class="btn sm" data-act="import">Import / restore</button>
+      <button type="button" class="btn sm danger" data-act="reset">Erase everything</button>
+    </div>`,
+    fd => {
+      const min = parseAmountOrZero(fd.get("min"));
+      if (min == null) return "Enter a valid minimum balance.";
+      const init = parseAmountOrZero(fd.get("init"));
+      if (init == null) return "Enter a valid starting balance.";
+      const now = nowTs();
+      if (init !== state.meta.initialBalance){
+        state.meta.initialBalance = init; state.meta.initialBalanceUpdatedAt = now;
+      }
+      if (min !== state.settings.minBalance || !!fd.get("incl") !== state.settings.includeOwed){
+        state.settings.minBalance = min;
+        state.settings.includeOwed = !!fd.get("incl");
+        state.settings.updatedAt = now;
+      }
+    });
+}
+
+function doImport(){
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = "application/json,.json";
+  inp.onchange = () => {
+    const file = inp.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      let d;
+      try { d = migrate(JSON.parse(r.result)); }
+      catch(e){ alert("That file isn't valid backup JSON."); return; }
+      if (!d || !Array.isArray(d.transactions) || !Array.isArray(d.categories)){
+        alert("That file doesn't look like an expense tracker backup."); return;
+      }
+      const msg = "Replace your current data with this backup?\n\n"
+        + "Backup has: " + d.transactions.length + " transactions, " + d.categories.length
+        + " categories, " + d.owed.length + " owed entries, " + d.archive.length + " archived months.\n"
+        + "You currently have: " + txns(state).length + " transactions, "
+        + catRows(state).length + " categories, " + owedRows(state).length + " owed entries, "
+        + state.archive.length + " archived months.\n\nYour current data downloads as a backup first.";
+      if (!confirm(msg)) return;
+      exportNow("before-import-" + todayStr());
+      state = d; closeDlg(); commit();
+    };
+    r.readAsText(file);
+  };
+  inp.click();
+}
+
+/* ============================ EVENTS ============================ */
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  const owedById = i => owedRows(state).find(o => o.id === i);
+
+  switch (act){
+    case "tab": ui.tab = id; render(); break;
+    case "chip": ui.cat = id; render(); break;
+    case "prevMonth": ui.month = shiftMonth(ui.month, -1); render(); break;
+    case "nextMonth": ui.month = shiftMonth(ui.month, 1); render(); break;
+    case "thisMonth": ui.month = curYm(); render(); break;
+    case "viewMonth": ui.month = id; ui.cat = "all"; ui.tab = "exp"; render(); break;
+    case "exportMonth": exportMonth(id); break;
+
+    case "addExpense": dlgExpense(null); break;
+    case "editExpense": dlgExpense(txns(state).find(t => t.id === id)); break;
+    case "addMoney": dlgSimpleTxn("add"); break;
+    case "adjust": dlgSimpleTxn("adjust"); break;
+    case "editMin": case "settings": dlgSettings(); break;
+
+    case "editTxn": dlgTxn(txns(state).find(x => x.id === id)); break;
+    case "toggleHistory": ui.allHistory = !ui.allHistory; render(); break;
+    case "addOwed": dlgOwedAdd(); break;
+    case "editOwed": dlgOwedEdit(owedById(id)); break;
+    case "reopenOwed": {
+      const o = owedById(id);
+      if (!o) break;
+      const got = receivedFor(state, o.id);
+      if (got >= o.amount){
+        alert("This one is fully paid.\n\nTo reopen it, undo the payment in the dashboard's "
+            + "balance history — that also takes the money back out of your current balance.");
+        break;
+      }
+      if (!confirm("Reopen this? " + o.label + " owes you " + fmt(o.amount - got) + " again.")) break;
+      o.status = "open"; o.dateClosed = null;
+      stamp(syncOwed(state, o)); commit();
+      break;
+    }
+    case "receiveFull": {
+      const o = owedById(id);
+      if (o && confirm("Got " + fmt(o.remaining) + " from " + o.label + "?\n\nThis adds it to your current balance — available stays the same."))
+        { receive(o, o.remaining, todayStr()); commit(); }
+      break;
+    }
+    case "receivePart": dlgReceivePart(owedById(id)); break;
+    case "writeOff": {
+      const o = owedById(id);
+      if (o && confirm("Write off " + fmt(o.remaining) + " from " + o.label + "?\n\nNothing is added to your balance, so your available goes down.")){
+        o.remaining = 0; o.status = "writtenOff"; o.dateClosed = todayStr(); stamp(o); commit();
+      }
+      break;
+    }
+    case "delOwed": {
+      const o = owedById(id);
+      if (o && confirm("Remove this from history? Money already received stays in your balance.")){
+        tombstone(o); commit();
+      }
+      break;
+    }
+
+    case "addCat": {
+      const inp = dlg.querySelector("[name=newcat]"), name = inp.value.trim();
+      if (!name) return;
+      if (catRows(state).some(c => c.name.toLowerCase() === name.toLowerCase())){ alert("That category already exists."); return; }
+      state.categories.push(stamp({ id:uid(), name, builtin:false, archived:false }));
+      queueSync(); Store.save(state); closeDlg(); dlgSettings(); break;
+    }
+    case "renameCat": {
+      const c = state.categories.find(c => c.id === id);
+      const name = prompt("Rename category", c.name);
+      if (name && name.trim()){ c.name = name.trim(); stamp(c); queueSync(); Store.save(state); closeDlg(); dlgSettings(); }
+      break;
+    }
+    case "archiveCat": {
+      const c = state.categories.find(c => c.id === id);
+      c.archived = !c.archived; stamp(c);
+      if (c.archived && ui.cat === c.id) ui.cat = "all";
+      queueSync(); Store.save(state); closeDlg(); dlgSettings(); break;
+    }
+
+    case "syncSetup": closeDlg(); dlgSync(); break;
+    case "syncNow": Sync.run().then(()=>{ closeDlg(); dlgSettings(); }); break;
+    case "linkFile": linkNewFile(); break;
+    case "openFile": openExistingFile(); break;
+    case "reconnect": reconnectFile(); break;
+    case "unlinkFile": unlinkFile(); break;
+    case "export": exportNow(); break;
+    case "import": doImport(); break;
+    case "doPendingBackup":
+      exportNow(state.meta.pendingBackup + "-close");
+      delete state.meta.pendingBackup; commit(); break;
+    case "dismissBackup":
+      delete state.meta.pendingBackup; commit(); break;
+    case "reset":
+      if (confirm("Erase ALL data and start over?\n\nA backup downloads first.")){
+        exportNow("before-reset-" + todayStr());
+        localStorage.removeItem(KEY);
+        idbDel("state").catch(()=>{});
+        state = null; closeDlg(); render();
+      }
+      break;
+
+    case "doSetup": {
+      const cur = parseAmountOrZero(document.getElementById("s-cur").value);
+      const min = parseAmountOrZero(document.getElementById("s-min").value);
+      if (cur == null || min == null){
+        document.getElementById("s-err").textContent = "Enter both amounts (0 is fine)."; return;
+      }
+      state = freshState(cur, min);
+      commit(); break;
+    }
+  }
+});
+
+document.addEventListener("change", e => {
+  if (e.target.dataset.act === "toggleOwed"){
+    state.settings.includeOwed = e.target.checked;
+    state.settings.updatedAt = nowTs();
+    render(); Store.save(state); queueSync();
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && dlg.open){ closeDlg(); return; }
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) || dlg.open || !state) return;
+  if (e.key === "a"){ e.preventDefault(); dlgExpense(null); }
+  const tabs = { "1":"dash", "2":"exp", "3":"arch", "4":"owed" };
+  if (tabs[e.key]){ ui.tab = tabs[e.key]; render(); }
+});
+
+window.addEventListener("beforeunload", e => {
+  if (Store.status === "error"){ e.preventDefault(); e.returnValue = ""; }
+});
+
+/* ============================ SYNC (GitHub private repo) ============================
+   The app stays offline-first: everything works with no network, and sync is a
+   background reconcile on top. Data lives in a file in a PRIVATE repo, reached
+   with a fine-grained token scoped to that one repo. The token is stored on this
+   device only and is never part of the synced data.                            */
+const SYNC_KEY = "expense-sync-v1";
+
+function b64encode(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64decode(b64){
+  const bin = atob(String(b64).replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+/* savedAt changes on every local save; comparing it would make every sync think
+   there's something to push and ping-pong forever. */
+function syncFingerprint(s){
+  if (!s) return "";
+  const c = JSON.parse(JSON.stringify(s));
+  if (c.meta) delete c.meta.savedAt;   // changes on every local save; not a real difference
+  return JSON.stringify(canonical(normalizeState(c)));
+}
+
+const Sync = {
+  cfg: null, sha: null, busy: false, timer: null, poll: null,
+  status: "off", error: "", lastAt: 0,
+
+  load(){
+    try { this.cfg = JSON.parse(localStorage.getItem(SYNC_KEY) || "null"); }
+    catch(e){ this.cfg = null; }
+    if (this.cfg) this.status = "idle";
+    return this.cfg;
+  },
+  save(cfg){ this.cfg = cfg; localStorage.setItem(SYNC_KEY, JSON.stringify(cfg)); },
+  disconnect(){
+    this.cfg = null; this.sha = null; this.status = "off"; this.error = "";
+    localStorage.removeItem(SYNC_KEY);
+    if (this.poll) { clearInterval(this.poll); this.poll = null; }
+    paintSync();
+  },
+  on(){ return !!(this.cfg && this.cfg.token); },
+
+  api(path, opts){
+    return fetch("https://api.github.com" + path, Object.assign({
+      cache: "no-store",
+      headers: {
+        "Authorization": "Bearer " + this.cfg.token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+      }
+    }, opts || {}));
+  },
+  async fail(r){
+    let detail = "";
+    try { detail = (await r.json()).message || ""; } catch(e){}
+    if (r.status === 401) return "Token rejected — it may have been revoked. Set up sync again.";
+    if (r.status === 403) return "GitHub refused the request" + (detail ? ": " + detail : "")
+                               + ". Check the token has Contents read & write on this repo.";
+    if (r.status === 404) return "Repo or file not found. Check the owner/repo name, and that the "
+                               + "token lists this repo under its repository access.";
+    return "GitHub error " + r.status + (detail ? ": " + detail : "");
+  },
+  filePath(){
+    const c = this.cfg;
+    return "/repos/" + encodeURIComponent(c.owner) + "/" + encodeURIComponent(c.repo)
+         + "/contents/" + c.path.split("/").map(encodeURIComponent).join("/");
+  },
+
+  async pull(){
+    const r = await this.api(this.filePath() + "?ref=" + encodeURIComponent(this.cfg.branch || "main"));
+    if (r.status === 404){ this.sha = null; return null; }        // first run: no file yet
+    if (!r.ok) throw new Error(await this.fail(r));
+    const j = await r.json();
+    this.sha = j.sha;
+    if (!j.content && j.size > 0)
+      throw new Error("Data file is too large for this sync method (" + j.size + " bytes).");
+    if (!j.content) return null;
+    const parsed = JSON.parse(b64decode(j.content));
+    return migrate(parsed);
+  },
+
+  async push(s, retrying){
+    const body = {
+      message: "expenses " + new Date().toISOString().slice(0,16).replace("T"," "),
+      content: b64encode(JSON.stringify(s, null, 1))
+    };
+    if (this.sha) body.sha = this.sha;
+    if (this.cfg.branch) body.branch = this.cfg.branch;
+    const r = await this.api(this.filePath(), { method: "PUT", body: JSON.stringify(body) });
+    if ((r.status === 409 || r.status === 422) && !retrying){
+      // Someone else wrote in between. Re-read, merge on top, try once more.
+      const remote = await this.pull();
+      const merged = mergeStates(s, remote);
+      return this.push(merged, true);
+    }
+    if (!r.ok) throw new Error(await this.fail(r));
+    const j = await r.json();
+    this.sha = j.content && j.content.sha;
+    return s;
+  },
+
+  async run(){
+    if (!this.on() || this.busy || !state) return;
+    if (!navigator.onLine){ this.status = "offline"; paintSync(); return; }
+    this.busy = true; this.status = "syncing"; this.error = ""; paintSync();
+    try {
+      const remote = await this.pull();
+      let merged = mergeStates(state, remote);
+      rolloverIfNeeded(merged); refreshArchive(merged);
+      const before = syncFingerprint(state), after = syncFingerprint(merged);
+      if (syncFingerprint(remote) !== after) merged = await this.push(merged);
+      if (before !== after){                      // remote brought something new
+        state = merged;
+        await Store.save(state);
+        render();
+      } else {
+        state = merged;
+      }
+      this.status = "ok"; this.lastAt = Date.now();
+    } catch(e){
+      this.status = "error"; this.error = e.message || String(e);
+      console.warn("Sync failed:", e);
+    }
+    this.busy = false; paintSync();
+  },
+
+  start(){
+    if (!this.on()) return;
+    if (this.poll) clearInterval(this.poll);
+    this.poll = setInterval(() => { if (!document.hidden) this.run(); }, 25000);
+    this.run();
+  }
+};
+
+function queueSync(){
+  if (!Sync.on()) return;
+  clearTimeout(Sync.timer);
+  Sync.timer = setTimeout(() => Sync.run(), 1200);
+}
+function agoText(ms){
+  const s = Math.round((Date.now() - ms) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s/60) + "m ago";
+  return Math.floor(s/3600) + "h ago";
+}
+function paintSync(){
+  const el = document.getElementById("syncInd");
+  if (!el) return;
+  const st = Sync.status;
+  el.className = "save-ind" + (st === "error" ? " err" : "");
+  el.textContent = !Sync.on() ? ""
+    : st === "syncing" ? "· syncing…"
+    : st === "error"   ? "· sync failed"
+    : st === "offline" ? "· offline"
+    : Sync.lastAt ? "· synced " + agoText(Sync.lastAt) : "· sync on";
+  el.title = st === "error" ? Sync.error : "";
+}
+
+function dlgSync(){
+  const c = Sync.cfg || { owner:"", repo:"expense-tracker-data", path:"data.json", branch:"main", token:"" };
+  dlg.innerHTML = `<form method="dialog"><h3>Sync across devices</h3>
+    <p style="color:var(--muted);font-size:13px;margin-top:0">
+      Keeps this device in step with your phone through a <strong>private</strong> GitHub repo.
+      Paste a fine-grained token that can read &amp; write contents on that one repo — see
+      SETUP-SYNC.md for the exact steps. The token stays on this device.</p>
+    <label><span>GitHub token</span>
+      <input name="token" type="password" autocomplete="off" spellcheck="false"
+        placeholder="github_pat_…" value="${esc(c.token)}"></label>
+    <label><span>Private repo name</span>
+      <input name="repo" type="text" autocomplete="off" spellcheck="false" value="${esc(c.repo)}"></label>
+    <label><span>File inside the repo</span>
+      <input name="path" type="text" autocomplete="off" spellcheck="false" value="${esc(c.path)}"></label>
+    <div class="err" id="d-err"></div>
+    <div class="dlg-actions">
+      ${Sync.on() ? `<button type="button" class="btn danger spacer" data-off>Turn sync off</button>` : ""}
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="submit" class="btn primary">Connect</button></div></form>`;
+  dlg.querySelector("[data-close]").onclick = closeDlg;
+  const off = dlg.querySelector("[data-off]");
+  if (off) off.onclick = () => { Sync.disconnect(); closeDlg(); render(); };
+
+  dlg.querySelector("form").onsubmit = async e => {
+    e.preventDefault();
+    const err = dlg.querySelector("#d-err");
+    const btn = dlg.querySelector("[type=submit]");
+    const f = e.target;
+    const token = f.token.value.trim(), repo = f.repo.value.trim(), path = f.path.value.trim();
+    if (!token) return err.textContent = "Paste your token.";
+    if (!repo)  return err.textContent = "Name the private repo.";
+    if (!path)  return err.textContent = "Name the file, e.g. data.json";
+    err.textContent = ""; btn.disabled = true; btn.textContent = "Checking…";
+    const prev = Sync.cfg;
+    try {
+      Sync.cfg = { token, repo, path, branch:"main", owner:"" };
+      const who = await Sync.api("/user");
+      if (!who.ok) throw new Error(await Sync.fail(who));
+      Sync.cfg.owner = (await who.json()).login;
+      const probe = await Sync.api("/repos/" + encodeURIComponent(Sync.cfg.owner) + "/" + encodeURIComponent(repo));
+      if (!probe.ok) throw new Error(await Sync.fail(probe));
+      const info = await probe.json();
+      Sync.cfg.branch = info.default_branch || "main";
+      if (!info.private && !confirm("Heads up: “" + repo + "” is a PUBLIC repo, so your spending "
+          + "would be visible to anyone.\n\nUse it anyway?")) throw new Error("Cancelled — make the repo private first.");
+      Sync.save(Sync.cfg);
+      closeDlg();
+      await Sync.run();
+      Sync.start();
+      render();
+      if (Sync.status === "error") alert("Connected, but the first sync failed:\n\n" + Sync.error);
+    } catch(ex){
+      Sync.cfg = prev;
+      err.textContent = ex.message || String(ex);
+      btn.disabled = false; btn.textContent = "Connect";
+    }
+  };
+  dlg.showModal();
+  const first = dlg.querySelector("input"); if (first) first.focus();
+}
+
+/* ============================ TESTS (?test=1) ============================ */
+function runTests(){
+  const out = [];
+  const ok = (c,m) => out.push((c ? "  PASS  " : "! FAIL  ") + m);
+  const eq = (a,b,m) => ok(a === b, m + "  (got " + a + ", expected " + b + ")");
+  const base = () => ({ version:2, settings:{ minBalance:20000, includeOwed:true },
+    categories:[{id:"c1",name:"Mess",builtin:true,archived:false},
+                {id:"c2",name:"RC",builtin:true,archived:false}],
+    transactions:[], owed:[], archive:[],
+    meta:{ initialBalance:100000, createdAt:"2026-08-01", lastSeenMonth:"2026-08", savedAt:"" } });
+  const T = "2026-08-10";
+
+  let s = base();
+  s.transactions.push({id:"t1",type:"expense",categoryId:"c1",amount:5000,date:T,note:""});
+  eq(curBalance(s), 95000, "1a. expense reduces current balance");
+  eq(available(s), 75000, "1b. available = current - min");
+  eq(monthSpent(s,"2026-08",null), 5000, "1c. counted in this month's spend");
+  eq(spendPerDay(s,"2026-08",null,T), 500, "1d. per-day = 5000/10 days elapsed");
+
+  s = base();
+  s.transactions.push({id:"t2",type:"expense",categoryId:"c1",amount:3000,date:"2026-07-15",note:""});
+  eq(curBalance(s), 97000, "2a. past-month expense still reduces balance");
+  eq(monthSpent(s,"2026-08",null), 0, "2b. not in August stats");
+  eq(monthSpent(s,"2026-07",null), 3000, "2c. is in July stats");
+  eq(spendPerDay(s,"2026-07",null,T), Math.floor(3000/31), "2d. past month divides by full month length");
+
+  s = base();
+  s.owed.push({id:"o1",label:"R",amount:10000,remaining:10000,dateAdded:T,status:"open",note:"",dateClosed:null});
+  eq(owedTotal(s), 10000, "3a. owed total");
+  eq(available(s), 90000, "3b. owed included by default");
+  s.settings.includeOwed = false;
+  eq(available(s), 80000, "3c. excluding owed drops available");
+
+  s = base();
+  s.owed.push({id:"o1",label:"R",amount:10000,remaining:10000,dateAdded:T,status:"open",note:"",dateClosed:null});
+  let avB = available(s), curB = curBalance(s);
+  rec(s, s.owed[0], 10000, T);
+  eq(curBalance(s), curB + 10000, "4a. received money raises current balance");
+  eq(available(s), avB, "4b. available UNCHANGED after receiving");
+  eq(owedTotal(s), 0, "4c. owed cleared");
+  eq(s.owed[0].status, "received", "4d. entry marked received");
+
+  s = base();
+  s.owed.push({id:"o1",label:"X",amount:10000,remaining:10000,dateAdded:T,status:"open",note:"",dateClosed:null});
+  avB = available(s); curB = curBalance(s);
+  s.owed[0].remaining = 0; s.owed[0].status = "writtenOff";
+  eq(curBalance(s), curB, "5a. write-off leaves current alone");
+  eq(available(s), avB - 10000, "5b. write-off lowers available");
+
+  s = base();
+  s.owed.push({id:"o1",label:"X",amount:50000,remaining:50000,dateAdded:T,status:"open",note:"",dateClosed:null});
+  rec(s, s.owed[0], 30000, T);
+  eq(s.owed[0].remaining, 20000, "6a. remainder tracked");
+  eq(s.owed[0].status, "open", "6b. entry stays open");
+
+  s = base();
+  s.transactions.push({id:"t1",type:"expense",categoryId:"c1",amount:5000,date:T,note:""});
+  s.transactions[0].amount = 7000;
+  eq(curBalance(s), 93000, "7a. edited amount recomputes balance");
+  s.transactions = [];
+  eq(curBalance(s), 100000, "7b. delete restores balance exactly");
+
+  eq(daysRemaining("2026-08","2026-08-31"), 1, "8a. last day of month leaves 1 day");
+  eq(daysRemaining("2026-08","2026-08-01"), 31, "8b. first day leaves all 31");
+  eq(daysElapsed("2026-08","2026-08-01"), 1, "8c. day 1 counts as elapsed");
+  eq(daysInMonth("2024-02"), 29, "8d. leap February");
+  eq(daysInMonth("2026-02"), 28, "8e. non-leap February");
+  eq(daysRemaining("2026-07","2026-08-10"), 0, "8f. past month has no days remaining");
+  eq(lastDayOf("2026-02"), "2026-02-28", "8g. last day of February");
+  s = base(); eq(avgPerDay(s,"2026-08-31"), 80000, "8h. last day: whole available spendable today");
+
+  s = base(); s.transactions.push({id:"t1",type:"expense",categoryId:"c1",amount:1234,date:T,note:"chai"});
+  eq(curBalance(migrate(JSON.parse(JSON.stringify(s)))), curBalance(s), "9. round-trip preserves balance");
+
+  s = base();
+  for (let i=0;i<3;i++) s.transactions.push({id:"x"+i,type:"expense",categoryId:"c1",amount:10,date:T,note:""});
+  eq(monthSpent(s,"2026-08",null), 30, "10a. 0.10 x3 = exactly 0.30");
+  eq(fmt(30), "₹0.30", "10b. formats as ₹0.30");
+  eq(parseMoney("12.5"), 1250, "10c. ₹12.5 parses to 1250 paise");
+  eq(fmt(123456789), "₹12,34,567.89", "10d. Indian digit grouping");
+
+  eq(parseMoney("0"), null, "11a. zero rejected");
+  eq(parseMoney("-5"), null, "11b. negative rejected for expenses");
+  eq(parseMoney("abc"), null, "11c. text rejected");
+  eq(parseMoney("1.234"), null, "11d. 3 decimals rejected");
+  eq(parseMoney("-150", true), -15000, "11e. negative allowed for adjustments");
+  eq(parseMoney("0", true), null, "11f. zero adjustment rejected");
+  eq(parseMoney("₹1,200"), 120000, "11g. accepts ₹ and commas");
+
+  s = base();
+  s.transactions.push({id:"a",type:"expense",categoryId:"c1",amount:5000,date:T,note:""});
+  s.transactions.push({id:"b",type:"expense",categoryId:"c2",amount:2000,date:T,note:""});
+  eq(monthSpent(s,"2026-08","c1"), 5000, "12a. per-category total");
+  eq(monthSpent(s,"2026-08","all"), 7000, "12b. 'all' totals everything");
+
+  /* ---- storage & archive ---- */
+  s = base();
+  s.transactions.push({id:"j1",type:"expense",categoryId:"c1",amount:4000,date:"2026-07-05",note:""});
+  s.transactions.push({id:"j2",type:"expense",categoryId:"c2",amount:6000,date:"2026-07-20",note:""});
+  s.transactions.push({id:"j3",type:"add",amount:50000,date:"2026-07-01",note:"allowance"});
+  s.transactions.push({id:"a1",type:"expense",categoryId:"c1",amount:1000,date:"2026-08-03",note:""});
+  eq(balanceAsOf(s,"2026-07-31"), 140000, "13a. closing balance ignores later months");
+  eq(balanceAsOf(s,"2026-08-31"), 139000, "13b. balance as of a later date");
+  let r = buildArchive(s,"2026-07");
+  eq(r.spent, 10000, "13c. archive totals July spending");
+  eq(r.entries, 2, "13d. archive counts entries");
+  eq(r.added, 50000, "13e. archive records money added");
+  eq(r.closingBalance, 140000, "13f. archive stores closing balance");
+  eq(r.perDay, Math.floor(10000/31), "13g. archive per-day over full month");
+  eq(r.byCategory[0].name, "RC", "13h. categories sorted biggest first");
+  eq(r.byCategory.length, 2, "13i. both categories present");
+
+  s = base(); s.meta.lastSeenMonth = "2026-07";
+  s.transactions.push({id:"j1",type:"expense",categoryId:"c1",amount:4000,date:"2026-07-05",note:""});
+  let closed = rolloverIfNeeded(s, "2026-08");
+  eq(closed.length, 1, "14a. rollover closes the finished month");
+  eq(s.archive.length, 1, "14b. one archive record created");
+  eq(s.archive[0].ym, "2026-07", "14c. correct month archived");
+  eq(s.meta.lastSeenMonth, "2026-08", "14d. lastSeenMonth advanced");
+  eq(s.meta.pendingBackup, "2026-07", "14e. backup flagged for the user");
+  eq(s.transactions.length, 1, "14f. raw entries kept, never deleted");
+  eq(monthSpent(s,"2026-08",null), 0, "14g. new month starts at zero");
+  eq(rolloverIfNeeded(s,"2026-08").length, 0, "14h. rollover is idempotent");
+  eq(s.archive.length, 1, "14i. no duplicate archive record");
+
+  s = base(); s.meta.lastSeenMonth = "2026-05";
+  s.transactions.push({id:"m1",type:"expense",categoryId:"c1",amount:1000,date:"2026-05-04",note:""});
+  s.transactions.push({id:"m2",type:"expense",categoryId:"c1",amount:2000,date:"2026-07-04",note:""});
+  closed = rolloverIfNeeded(s, "2026-08");
+  eq(closed.length, 2, "15a. skipped months archived too (May and July)");
+  eq(s.archive.length, 2, "15b. empty June produced no record");
+  eq(s.archive[0].ym, "2026-07", "15c. archive sorted newest first");
+  eq(s.archive[1].ym, "2026-05", "15d. oldest last");
+
+  s = base(); s.meta.lastSeenMonth = "2026-12";
+  s.transactions.push({id:"d1",type:"expense",categoryId:"c1",amount:1000,date:"2026-12-31",note:""});
+  closed = rolloverIfNeeded(s, "2027-01");
+  eq(closed.length, 1, "16a. rolls over across a year boundary");
+  eq(s.archive[0].ym, "2026-12", "16b. December archived");
+  eq(shiftMonth("2026-12",1), "2027-01", "16c. month shift crosses the year");
+
+  const old = { version:1, settings:{minBalance:5000,includeOwed:false},
+    categories:[{id:"c1",name:"Mess"}], transactions:[{id:"t",type:"expense",categoryId:"c1",amount:100,date:T}],
+    owed:[], meta:{initialBalance:20000,lastBackupMonth:"2026-07"} };
+  const mig = migrate(old);
+  eq(mig.version, 3, "17a. v1 data migrates to the current version");
+  ok(Array.isArray(mig.archive), "17b. archive array added");
+  ok(mig.meta.lastSeenMonth === curYm(), "17c. lastSeenMonth seeded");
+  ok(mig.meta.lastBackupMonth === undefined, "17d. obsolete field dropped");
+  eq(curBalance(mig), 19900, "17e. balance survives migration");
+
+  /* ---- editing entries ---- */
+  const owedFix = (amt,rem,st) => ({ id:"o1", label:"R", amount:amt, remaining:rem,
+                                     dateAdded:T, status:st||"open", note:"", dateClosed:null });
+  s = base(); s.owed.push(owedFix(50000,50000));
+  rec(s, s.owed[0], 20000, T);
+  eq(receivedFor(s,"o1"), 20000, "18a. payments totalled per owed entry");
+  eq(s.owed[0].remaining, 30000, "18b. outstanding derived from payments");
+  // edit that payment upward
+  s.transactions.find(t=>t.type==="received").amount = 35000;
+  syncOwed(s, s.owed[0]);
+  eq(s.owed[0].remaining, 15000, "18c. editing a payment re-derives outstanding");
+  eq(s.owed[0].status, "open", "18d. still open after a bigger part payment");
+  eq(curBalance(s), 135000, "18e. balance follows the edited payment");
+  // edit it to settle the whole thing
+  s.transactions.find(t=>t.type==="received").amount = 50000;
+  syncOwed(s, s.owed[0]);
+  eq(s.owed[0].remaining, 0, "18f. paying it off closes the entry");
+  eq(s.owed[0].status, "received", "18g. status flips to received");
+
+  // undo a payment -> entry reopens, balance drops
+  s = base(); s.owed.push(owedFix(50000,50000));
+  let avBefore2 = available(s);
+  rec(s, s.owed[0], 50000, T);
+  eq(s.owed[0].status, "received", "19a. fully received");
+  s.transactions = s.transactions.filter(t => t.type !== "received");
+  syncOwed(s, s.owed[0]);
+  eq(s.owed[0].status, "open", "19b. undo reopens the entry");
+  eq(s.owed[0].remaining, 50000, "19c. full amount owed again");
+  eq(curBalance(s), 100000, "19d. money comes back out of the balance");
+  eq(available(s), avBefore2, "19e. available lands back where it started");
+
+  // editing the owed total keeps payments intact
+  s = base(); s.owed.push(owedFix(50000,50000));
+  rec(s, s.owed[0], 20000, T);
+  s.owed[0].amount = 30000; syncOwed(s, s.owed[0]);
+  eq(s.owed[0].remaining, 10000, "20a. lowering the total re-derives outstanding");
+  s.owed[0].amount = 20000; syncOwed(s, s.owed[0]);
+  eq(s.owed[0].status, "received", "20b. total equal to paid closes it");
+  eq(receivedFor(s,"o1"), 20000, "20c. payments untouched by editing the total");
+
+  // reopening a written-off entry
+  s = base(); s.owed.push(owedFix(50000,0,"writtenOff"));
+  eq(owedTotal(s), 0, "21a. written off counts for nothing");
+  s.owed[0].status = "open"; s.owed[0].dateClosed = null; syncOwed(s, s.owed[0]);
+  eq(s.owed[0].remaining, 50000, "21b. reopening restores the full amount");
+  eq(owedTotal(s), 50000, "21c. back in the owed total");
+
+  // self-heal on load: a stored remaining that disagrees with the payments
+  s = base(); s.owed.push(owedFix(50000,50000));
+  rec(s, s.owed[0], 20000, T);
+  s.owed[0].remaining = 99999;                       // corrupted by hand
+  const healed = migrate(JSON.parse(JSON.stringify(s)));
+  eq(healed.owed[0].remaining, 30000, "22a. loading repairs a wrong outstanding amount");
+  eq(healed.owed[0].status, "open", "22b. status repaired too");
+
+  // editing an entry in an archived month updates the archive
+  s = base(); s.meta.lastSeenMonth = "2026-07";
+  s.transactions.push({id:"e1",type:"expense",categoryId:"c1",amount:4000,date:"2026-07-05",note:""});
+  rolloverIfNeeded(s, "2026-08");
+  eq(s.archive[0].spent, 4000, "23a. archived with the original figure");
+  s.transactions.find(t=>t.id==="e1").amount = 9000;
+  refreshArchive(s);
+  eq(s.archive[0].spent, 9000, "23b. editing a past entry updates the archive");
+  eq(s.archive[0].closingBalance, 91000, "23c. closing balance recalculated");
+  s.transactions = s.transactions.filter(t => t.id !== "e1");
+  refreshArchive(s);
+  eq(s.archive[0].spent, 0, "23d. deleting a past entry updates the archive");
+  eq(s.archive.length, 1, "23e. the month stays archived");
+
+  // zero-allowing parser for the balance floor / starting balance
+  eq(parseAmountOrZero("0"), 0, "24a. zero accepted");
+  eq(parseAmountOrZero("1500"), 150000, "24b. plain amount");
+  eq(parseAmountOrZero("-200"), -20000, "24c. negative accepted");
+  eq(parseAmountOrZero("₹1,500.50"), 150050, "24d. symbols and commas stripped");
+  eq(parseAmountOrZero(""), null, "24e. blank rejected");
+  eq(parseAmountOrZero("abc"), null, "24f. text rejected");
+  eq(parseAmountOrZero("1.234"), null, "24g. 3 decimals rejected");
+
+  /* ---- tombstones ---- */
+  s = base();
+  s.transactions.push({id:"t1",type:"expense",categoryId:"c1",amount:5000,date:T,updatedAt:10});
+  s.transactions.push({id:"t2",type:"expense",categoryId:"c1",amount:3000,date:T,updatedAt:10,deleted:true});
+  eq(curBalance(s), 95000, "25a. deleted rows are ignored by the balance");
+  eq(monthSpent(s,"2026-08",null), 5000, "25b. and by month totals");
+  eq(txns(s).length, 1, "25c. and by every list view");
+  s.owed.push({id:"o1",label:"X",amount:9000,remaining:9000,dateAdded:T,status:"open",updatedAt:1,deleted:true});
+  eq(owedTotal(s), 0, "25d. deleted owed rows don't count");
+
+  /* ---- merge ---- */
+  const dev = (rows, extra) => Object.assign({ version:3,
+    settings:{ minBalance:20000, includeOwed:true, updatedAt:100 },
+    categories:[{id:"c1",name:"Mess",archived:false,updatedAt:1}],
+    transactions:rows||[], owed:[], archive:[],
+    meta:{ initialBalance:100000, initialBalanceUpdatedAt:100, createdAt:"2026-08-01",
+           lastSeenMonth:"2026-08", savedAt:"" } }, extra||{});
+  const ex = (id, amt, ts, del) => ({ id, type:"expense", categoryId:"c1", amount:amt,
+                                      date:T, note:"", updatedAt:ts, deleted:del });
+
+  // each device added a different expense — both must survive
+  let A = dev([ex("a",1000,10)]), B = dev([ex("b",2000,20)]);
+  let M = mergeStates(A, B);
+  eq(M.transactions.length, 2, "26a. both devices' new entries survive");
+  eq(monthSpent(M,"2026-08",null), 3000, "26b. totals include both");
+  eq(syncFingerprint(mergeStates(A,B)), syncFingerprint(mergeStates(B,A)), "26c. merge order doesn't matter");
+
+  // same row edited on both — newest edit wins
+  A = dev([ex("a",1000,10)]); B = dev([ex("a",7000,50)]);
+  eq(mergeStates(A,B).transactions[0].amount, 7000, "27a. newer edit wins");
+  eq(mergeStates(B,A).transactions[0].amount, 7000, "27b. regardless of merge direction");
+  A = dev([ex("a",1000,90)]); B = dev([ex("a",7000,50)]);
+  eq(mergeStates(A,B).transactions[0].amount, 1000, "27c. older edit loses");
+
+  // a delete on one device must not be resurrected by the other
+  A = dev([ex("a",1000,10,true)]); B = dev([ex("a",1000,5)]);
+  eq(mergeStates(A,B).transactions[0].deleted, true, "28a. delete beats an older edit");
+  eq(monthSpent(mergeStates(A,B),"2026-08",null), 0, "28b. deleted entry stays gone");
+  A = dev([ex("a",1000,10,true)]); B = dev([ex("a",4000,80)]);
+  eq(mergeStates(A,B).transactions[0].amount, 4000, "28c. but a later edit un-deletes it");
+  eq(mergeStates(A,B).transactions[0].deleted, undefined, "28d. tombstone cleared by that edit");
+
+  // identical timestamps must resolve the same way on both devices
+  A = dev([ex("a",1000,42)]); B = dev([ex("a",2000,42)]);
+  eq(mergeStates(A,B).transactions[0].amount, mergeStates(B,A).transactions[0].amount,
+     "29a. timestamp ties break identically on both sides");
+
+  // settings and starting balance follow the newer change
+  A = dev([], { settings:{minBalance:20000,includeOwed:true,updatedAt:100} });
+  B = dev([], { settings:{minBalance:50000,includeOwed:false,updatedAt:200} });
+  eq(mergeStates(A,B).settings.minBalance, 50000, "30a. newer settings win");
+  eq(mergeStates(A,B).settings.includeOwed, false, "30b. including the owed toggle");
+  A = dev([], { meta:{initialBalance:100000,initialBalanceUpdatedAt:100,createdAt:"2026-08-01",lastSeenMonth:"2026-08",savedAt:""} });
+  B = dev([], { meta:{initialBalance:700000,initialBalanceUpdatedAt:300,createdAt:"2026-08-01",lastSeenMonth:"2026-09",savedAt:""} });
+  M = mergeStates(A,B);
+  eq(M.meta.initialBalance, 700000, "30c. newer starting balance wins");
+  eq(M.meta.lastSeenMonth, "2026-09", "30d. furthest-along month wins");
+
+  // owed outstanding is re-derived from whatever payments merged in
+  A = dev([]); A.owed = [{id:"o1",label:"R",amount:50000,remaining:50000,dateAdded:T,status:"open",updatedAt:1}];
+  B = dev([{id:"p1",type:"received",owedId:"o1",amount:20000,date:T,note:"R",updatedAt:9}]);
+  B.owed = [{id:"o1",label:"R",amount:50000,remaining:50000,dateAdded:T,status:"open",updatedAt:1}];
+  M = mergeStates(A,B);
+  eq(M.owed[0].remaining, 30000, "31a. a payment synced from the phone reduces what's outstanding");
+  eq(curBalance(M), 120000, "31b. and raises the balance");
+  eq(available(M), curBalance(A) - 20000 + 50000, "31c. available unchanged by the payment");
+
+  // merging is idempotent — syncing twice changes nothing
+  eq(syncFingerprint(mergeStates(M, M)), syncFingerprint(M), "32a. merging with itself is a no-op");
+  eq(syncFingerprint(mergeStates(mergeStates(A,B), B)), syncFingerprint(mergeStates(A,B)),
+     "32b. re-merging the same remote changes nothing");
+
+  // archive months union, with figures recomputed from merged entries
+  A = dev([ex("j1",4000,10)]); A.transactions[0].date = "2026-07-05";
+  A.archive = [{ym:"2026-07",spent:4000,entries:1,closedAt:"2026-08-01",byCategory:[],days:31,perDay:129,added:0,closingBalance:96000}];
+  B = dev([ex("j2",6000,20)]); B.transactions[0].date = "2026-07-09";
+  B.archive = [{ym:"2026-07",spent:6000,entries:1,closedAt:"2026-08-01",byCategory:[],days:31,perDay:193,added:0,closingBalance:94000}];
+  M = mergeStates(A,B);
+  eq(M.archive.length, 1, "33a. the same archived month isn't duplicated");
+  eq(M.archive[0].spent, 10000, "33b. archive figures recomputed from both devices' entries");
+  eq(M.archive[0].entries, 2, "33c. entry count reflects the merge");
+
+  // legacy data with no timestamps still merges without losing rows
+  const legacy = migrate({ version:2, settings:{minBalance:1000,includeOwed:true},
+    categories:[{id:"c1",name:"Mess"}], owed:[],
+    transactions:[{id:"old",type:"expense",categoryId:"c1",amount:500,date:T}],
+    meta:{initialBalance:5000,savedAt:"2026-08-01T00:00:00.000Z"} });
+  eq(typeof legacy.transactions[0].updatedAt, "number", "34a. old rows get a timestamp on load");
+  eq(legacy.version, 3, "34b. migrated to v3");
+  M = mergeStates(legacy, dev([ex("new",100,999)]));
+  eq(M.transactions.length, 2, "34c. legacy rows survive a merge with a newer device");
+
+  // base64 round-trip must survive the rupee sign and other non-ASCII
+  const tricky = JSON.stringify({ note:"chai ₹12 — Nescafé", emoji:"🍵" });
+  eq(b64decode(b64encode(tricky)), tricky, "35a. UTF-8 survives the base64 round-trip");
+  eq(b64decode(b64encode("")), "", "35b. empty string round-trips");
+
+  function rec(st,o,amt,date){
+    st.transactions.push({id:uid(),type:"received",owedId:o.id,amount:amt,date,note:o.label});
+    syncOwed(st, o);
+    if (o.status === "received") o.dateClosed = date;
+  }
+
+  const failed = out.filter(l => l[0] === "!").length;
+  const head = failed ? failed + " TEST(S) FAILED" : "All " + out.length + " tests passed";
+  document.getElementById("view").innerHTML =
+    `<div class="card"><h3 style="margin-top:0" class="${failed ? "bad" : "good"}">${head}</h3>
+     <div class="tests">${esc(out.join("\n"))}</div>
+     <p style="margin-bottom:0"><a href="index.html">← Back to the app</a></p></div>`;
+  console.log(head + "\n" + out.join("\n"));
+}
+
+/* ============================ BOOT ============================ */
+async function boot(){
+  if (new URLSearchParams(location.search).get("test") === "1"){
+    document.querySelector("nav").style.display = "none";
+    runTests(); return;
+  }
+  Sync.load();
+  try { state = await Store.boot(); }
+  catch(e){ console.error("Boot failed:", e); state = null; }
+  if (state){
+    const closed = rolloverIfNeeded(state);
+    render();
+    if (closed.length) Store.save(state).catch(e => console.error(e));
+  } else render();
+
+  // Catch up whenever this device comes back into use or back online.
+  Sync.start();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && Date.now() - Sync.lastAt > 8000) Sync.run();
+  });
+  window.addEventListener("online", () => Sync.run());
+  window.addEventListener("offline", () => { Sync.status = "offline"; paintSync(); });
+  setInterval(paintSync, 30000);      // keep the "synced 3m ago" label honest
+
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
+    navigator.serviceWorker.register("sw.js").catch(e => console.warn("No service worker:", e));
+}
+boot();
+</script>
+</body>
+</html>
