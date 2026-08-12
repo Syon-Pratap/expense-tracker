@@ -96,6 +96,13 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .bar{height:7px;border-radius:4px;background:var(--accent);opacity:.85;min-width:3px}
 .bartrack{flex:1;background:var(--chip);border-radius:4px;overflow:hidden;max-width:220px}
 .mono{font-variant-numeric:tabular-nums}
+.selbox{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex:0 0 auto;margin:0}
+.grouptext{font-family:ui-monospace,Consolas,monospace;font-size:13px;white-space:pre-wrap;
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px;margin:10px 0 0;
+  overflow-x:auto}
+.grouprow{padding:14px 0;border-bottom:1px solid var(--line)}
+.grouprow:last-child{border-bottom:0}
+.grouprow:first-child{padding-top:2px}
 @media (max-width:640px){
   header{padding:10px 12px;gap:8px}
   /* row 1: title, status, settings. row 2: the scrolling tab strip. */
@@ -271,6 +278,7 @@ function normalizeState(s){
   s.transactions = sortById(s.transactions);
   s.owed = sortById(s.owed);
   s.laundryBudgets = sortById(s.laundryBudgets);
+  s.owedGroups = sortById(s.owedGroups);
   s.archive = (s.archive || []).slice().sort((a,b)=> a.ym < b.ym ? 1 : -1);
   return s;
 }
@@ -453,6 +461,7 @@ function mergeStates(local, remote){
     owed: mergeRows(local.owed, remote.owed),
     // keyed by month, so the row id is the month itself and merging is free
     laundryBudgets: mergeRows(local.laundryBudgets, remote.laundryBudgets),
+    owedGroups: mergeRows(local.owedGroups, remote.owedGroups),
     archive: [],
     meta: Object.assign({}, local.meta, {
       initialBalance: rm > lm ? remote.meta.initialBalance : local.meta.initialBalance,
@@ -596,9 +605,10 @@ function migrate(d){
   d.owed       = d.owed || [];
   d.archive    = d.archive || [];                       // added in v2
   d.laundryBudgets = d.laundryBudgets || [];            // added in v4
+  d.owedGroups = d.owedGroups || [];                    // added in v5
   // v3: every row needs an id and an updatedAt so it can be merged across devices.
   const seed = Date.parse(d.meta.savedAt || "") || 1;
-  [d.categories, d.transactions, d.owed, d.laundryBudgets].forEach(list => list.forEach(x => {
+  [d.categories, d.transactions, d.owed, d.laundryBudgets, d.owedGroups].forEach(list => list.forEach(x => {
     if (!x.id) x.id = uid();
     if (typeof x.updatedAt !== "number") x.updatedAt = seed;
   }));
@@ -617,7 +627,7 @@ function freshState(initial, min){
     version: 3,
     settings: { minBalance: min, includeOwed: true, updatedAt: now },
     categories: BUILTIN_CATS.map(n => ({ id: uid(), name: n, builtin: true, archived: false, updatedAt: now })),
-    transactions: [], owed: [], archive: [], laundryBudgets: [],
+    transactions: [], owed: [], archive: [], laundryBudgets: [], owedGroups: [],
     meta: { initialBalance: initial, initialBalanceUpdatedAt: now,
             createdAt: todayStr(), lastSeenMonth: curYm(), savedAt: "" }
   };
@@ -1042,10 +1052,42 @@ function viewArchive(){
         the dashboard starts fresh. Your entries are never deleted.</div></div>`}`;
 }
 
+/* The pasteable form of a saved list: one line per item, total last. */
+function groupText(g){
+  return g.items.map(i => i.label + " -> " + fmt(i.amount)).join("\n")
+       + "\nTotal -> " + fmt(g.total);
+}
+function groupRows(s){ return (s.owedGroups || []).filter(g => !g.deleted); }
+
 function viewOwed(){
   const open   = owedRows(state).filter(o => o.status === "open");
   const closed = owedRows(state).filter(o => o.status !== "open")
                    .sort((a,b)=> (b.dateClosed || "") < (a.dateClosed || "") ? -1 : 1);
+  const sel = ui.sel || [];
+  const selTotal = open.filter(o => sel.indexOf(o.id) >= 0).reduce((a,o)=> a + o.remaining, 0);
+  const groups = groupRows(state);
+  const liveGroups = groups.filter(g => g.status !== "collected")
+                       .sort((a,b)=> a.createdAt < b.createdAt ? 1 : -1);
+  const doneGroups = groups.filter(g => g.status === "collected")
+                       .sort((a,b)=> (a.collectedAt||"") < (b.collectedAt||"") ? 1 : -1);
+  // which open entries are already spoken for by a saved list
+  const inList = {};
+  for (const g of liveGroups) for (const i of g.items) inList[i.owedId] = g.name;
+
+  const groupCard = (g, done) => `<div class="grouprow">
+      <div class="row between">
+        <div><strong>${esc(g.name)}</strong>
+          <span class="pill">${g.items.length} item${g.items.length === 1 ? "" : "s"} · ${esc(fmt(g.total))}</span>
+          ${done ? `<span class="pill">collected ${esc(prettyDate(g.collectedAt || g.createdAt))}</span>` : ""}</div>
+      </div>
+      <pre class="grouptext">${esc(groupText(g))}</pre>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm" data-act="copyGroup" data-id="${esc(g.id)}">Copy text</button>
+        ${done ? "" : `<button class="btn sm primary" data-act="collectGroup" data-id="${esc(g.id)}">Received all</button>`}
+        <button class="btn sm danger" data-act="delGroup" data-id="${esc(g.id)}">Remove list</button>
+      </div>
+    </div>`;
+
   return `
   ${storageBanners()}
   <div class="card hero">
@@ -1056,12 +1098,20 @@ function viewOwed(){
     </div>
   </div>
 
+  ${sel.length ? `<div class="banner info">
+    <span class="grow"><strong>${sel.length} selected</strong> · ${esc(fmt(selTotal))}</span>
+    <button class="btn sm primary" data-act="makeGroup">Done</button>
+    <button class="btn sm" data-act="clearSel">Clear</button>
+  </div>` : ""}
+
   <div class="row between"><h2 style="margin:0">Open</h2>
     <button class="btn primary sm" data-act="addOwed">+ Add owed</button></div>
   <div class="card">
     ${open.length ? `<ul class="list">${open.map(o => `<li>
+        <input type="checkbox" class="selbox" data-act="selOwed" data-id="${esc(o.id)}"
+          ${sel.indexOf(o.id) >= 0 ? "checked" : ""} aria-label="Select ${esc(o.label)}">
         <div class="li-main">
-          <div>${esc(o.label)}${o.remaining !== o.amount ? ` <span class="pill">part paid of ${esc(fmt(o.amount))}</span>` : ""}</div>
+          <div>${esc(o.label)}${o.remaining !== o.amount ? ` <span class="pill">part paid of ${esc(fmt(o.amount))}</span>` : ""}${inList[o.id] ? ` <span class="pill">in “${esc(inList[o.id])}”</span>` : ""}</div>
           <div class="li-sub">${esc(prettyDate(o.dateAdded))}${o.note ? " · " + esc(o.note) : ""}</div>
         </div>
         <div class="li-amt">${esc(fmt(o.remaining))}</div>
@@ -1069,9 +1119,19 @@ function viewOwed(){
         <button class="btn sm" data-act="receivePart" data-id="${esc(o.id)}">Part</button>
         <button class="btn sm" data-act="editOwed" data-id="${esc(o.id)}">Edit</button>
         <button class="btn sm danger" data-act="writeOff" data-id="${esc(o.id)}">Write off</button>
-      </li>`).join("")}</ul>`
+      </li>`).join("")}</ul>
+      ${!sel.length ? `<div style="color:var(--muted);font-size:12.5px;margin-top:10px">
+        Tick a few to bundle them into one list you can send and collect together.</div>` : ""}`
       : `<div class="empty">Nobody owes you anything right now.</div>`}
   </div>
+
+  ${liveGroups.length ? `<h2>Saved lists</h2>
+  <div class="card">${liveGroups.map(g => groupCard(g, false)).join("")}</div>` : ""}
+
+  <details ${doneGroups.length ? "" : "hidden"}>
+    <summary>Collected lists (${doneGroups.length})</summary>
+    <div class="card">${doneGroups.map(g => groupCard(g, true)).join("")}</div>
+  </details>
 
   <details ${closed.length ? "" : "hidden"}>
     <summary>History (${closed.length})</summary>
@@ -1337,6 +1397,76 @@ function dlgLaundryBudget(){
     });
 }
 
+/* ---------- saved lists of owed entries ---------- */
+async function copyText(text, btn){
+  try {
+    await navigator.clipboard.writeText(text);
+    if (btn){ const old = btn.textContent; btn.textContent = "Copied"; setTimeout(()=>{ btn.textContent = old; }, 1400); }
+    return true;
+  } catch(e){
+    // Clipboard blocked (some browsers only allow it on a real tap) — show it to copy by hand.
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.cssText = "position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);"
+      + "width:min(420px,90vw);height:180px;z-index:99;font:13px ui-monospace,monospace;padding:10px";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(e2){}
+    ta.remove();
+    if (!ok) alert("Couldn't copy automatically. The text is shown on the card — select and copy it.");
+    return ok;
+  }
+}
+
+function dlgMakeGroup(){
+  const open = owedRows(state).filter(o => o.status === "open" && (ui.sel || []).indexOf(o.id) >= 0);
+  if (!open.length) return;
+  const items = open.map(o => ({ owedId:o.id, label:o.label, amount:o.remaining }));
+  const total = items.reduce((a,i)=> a + i.amount, 0);
+  const preview = items.map(i => i.label + " -> " + fmt(i.amount)).join("\n") + "\nTotal -> " + fmt(total);
+  openDlg("Save this list",
+    `<label><span>Name it (optional)</span>
+      <input name="name" type="text" autocomplete="off" value="${esc(prettyDate(todayStr()))}"></label>
+     <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Text</div>
+     <pre class="grouptext" style="margin-top:0">${esc(preview)}</pre>
+     <p style="color:var(--muted);font-size:12.5px">Amounts are fixed at what they are now. Collecting
+       the list later adds ${esc(fmt(total))} to your current balance and settles these entries.</p>`,
+    fd => {
+      const name = fd.get("name").trim() || prettyDate(todayStr());
+      state.owedGroups.push(stamp({ id:uid(), name, items, total,
+        createdAt: todayStr(), status:"open", collectedAt:null }));
+      ui.sel = [];
+    },
+    `<button type="button" class="btn spacer" data-copy>Copy text</button>`);
+  dlg.querySelector("[data-copy]").onclick = e => copyText(preview, e.target);
+}
+
+function collectGroup(g){
+  if (!g || g.status === "collected") return;
+  // Amounts are frozen, so flag anything that has moved since the list was made.
+  const drift = [];
+  for (const it of g.items){
+    const o = owedRows(state).find(x => x.id === it.owedId);
+    if (!o) drift.push(it.label + " — that entry no longer exists");
+    else if (o.status !== "open") drift.push(it.label + " — already settled on its own");
+    else if (o.remaining !== it.amount)
+      drift.push(it.label + " — now " + fmt(o.remaining) + ", the list says " + fmt(it.amount));
+  }
+  let msg = "Collect " + fmt(g.total) + " for “" + g.name + "”?\n\n"
+          + "It goes into your current balance and settles these entries.";
+  if (drift.length) msg += "\n\nSince you saved this list:\n• " + drift.join("\n• ")
+          + "\n\nIt will still collect the amounts shown on the list. Cancel if that's not right.";
+  if (!confirm(msg)) return;
+  const today = todayStr();
+  for (const it of g.items){
+    state.transactions.push(stamp({ id:uid(), type:"received", owedId:it.owedId,
+      amount:it.amount, date:today, note:it.label }));
+    const o = state.owed.find(x => x.id === it.owedId && !x.deleted);
+    if (o) stamp(syncOwed(state, o));
+  }
+  g.status = "collected"; g.collectedAt = today; stamp(g);
+  commit();
+}
+
 function dlgSettings(){
   const linked = Store.handle && Store.fileOk;
   openDlg("Settings", `
@@ -1470,6 +1600,22 @@ document.addEventListener("click", e => {
     case "toggleHistory": ui.allHistory = !ui.allHistory; render(); break;
     case "addOwed": dlgOwedAdd(); break;
     case "editOwed": dlgOwedEdit(owedById(id)); break;
+    case "clearSel": ui.sel = []; render(); break;
+    case "makeGroup": dlgMakeGroup(); break;
+    case "collectGroup": collectGroup(groupRows(state).find(g => g.id === id)); break;
+    case "copyGroup": {
+      const g = groupRows(state).find(x => x.id === id);
+      if (g) copyText(groupText(g), el);
+      break;
+    }
+    case "delGroup": {
+      const g = groupRows(state).find(x => x.id === id);
+      if (g && confirm("Remove the list “" + g.name + "”?\n\nThe owed entries in it are untouched"
+          + (g.status === "collected" ? " and stay settled." : " — they stay open."))){
+        tombstone(g); commit();
+      }
+      break;
+    }
     case "reopenOwed": {
       const o = owedById(id);
       if (!o) break;
@@ -1561,6 +1707,15 @@ document.addEventListener("click", e => {
 });
 
 document.addEventListener("change", e => {
+  if (e.target.dataset.act === "selOwed"){
+    const id = e.target.dataset.id;
+    ui.sel = ui.sel || [];
+    const at = ui.sel.indexOf(id);
+    if (e.target.checked){ if (at < 0) ui.sel.push(id); }
+    else if (at >= 0) ui.sel.splice(at, 1);
+    render();
+    return;
+  }
   if (e.target.dataset.act === "toggleOwed"){
     state.settings.includeOwed = e.target.checked;
     state.settings.updatedAt = nowTs();
@@ -1826,7 +1981,7 @@ function runTests(){
   const base = () => ({ version:2, settings:{ minBalance:20000, includeOwed:true },
     categories:[{id:"c1",name:"Mess",builtin:true,archived:false},
                 {id:"c2",name:"RC",builtin:true,archived:false}],
-    transactions:[], owed:[], archive:[], laundryBudgets:[],
+    transactions:[], owed:[], archive:[], laundryBudgets:[], owedGroups:[],
     meta:{ initialBalance:100000, createdAt:"2026-08-01", lastSeenMonth:"2026-08", savedAt:"" } });
   const T = "2026-08-10";
 
@@ -2061,7 +2216,7 @@ function runTests(){
   const dev = (rows, extra) => Object.assign({ version:3,
     settings:{ minBalance:20000, includeOwed:true, updatedAt:100 },
     categories:[{id:"c1",name:"Mess",archived:false,updatedAt:1}],
-    transactions:rows||[], owed:[], archive:[], laundryBudgets:[],
+    transactions:rows||[], owed:[], archive:[], laundryBudgets:[], owedGroups:[],
     meta:{ initialBalance:100000, initialBalanceUpdatedAt:100, createdAt:"2026-08-01",
            lastSeenMonth:"2026-08", savedAt:"" } }, extra||{});
   const ex = (id, amt, ts, del) => ({ id, type:"expense", categoryId:"c1", amount:amt,
@@ -2219,6 +2374,92 @@ function runTests(){
   eq(s.archive[0].laundry, 2000, "40c. laundry archived separately");
   eq(s.archive[0].added, 0, "40d. neither counts as money added");
   eq(s.archive[0].closingBalance, 100000-4000-9000-2000, "40e. closing balance nets all three");
+
+  /* ---- saved lists of owed entries ---- */
+  const owedFix2 = (id,label,amt) => ({ id, label, amount:amt, remaining:amt, dateAdded:T,
+                                        status:"open", note:"", dateClosed:null, updatedAt:1 });
+  const mkGroup = (st, ids, name) => {
+    const items = ids.map(i => { const o = st.owed.find(x=>x.id===i);
+                                 return { owedId:i, label:o.label, amount:o.remaining }; });
+    const g = { id:"g1", name:name||"list", items, total:items.reduce((a,i)=>a+i.amount,0),
+                createdAt:T, status:"open", collectedAt:null, updatedAt:1 };
+    st.owedGroups.push(g); return g;
+  };
+  const collect = (st, g) => {           // mirrors collectGroup() without the confirm
+    for (const it of g.items){
+      st.transactions.push({id:uid(),type:"received",owedId:it.owedId,amount:it.amount,date:T,note:it.label,updatedAt:1});
+      const o = st.owed.find(x => x.id === it.owedId && !x.deleted);
+      if (o) syncOwed(st, o);
+    }
+    g.status = "collected"; g.collectedAt = T; return g;
+  };
+
+  s = base();
+  s.owed.push(owedFix2("o1","Rahul — dinner",26000));
+  s.owed.push(owedFix2("o2","Aman — books",80000));
+  s.owed.push(owedFix2("o3","Mess split",15000));
+  let g = mkGroup(s, ["o1","o2","o3"], "12 Aug");
+  eq(g.total, 121000, "41a. list total is the sum of its items");
+  eq(groupText(g), "Rahul — dinner -> ₹260\nAman — books -> ₹800\nMess split -> ₹150\nTotal -> ₹1,210",
+     "41b. text is item -> amount per line, total last");
+  eq(owedTotal(s), 121000, "41c. saving a list doesn't change what's owed");
+  eq(curBalance(s), 100000, "41d. nor the balance");
+
+  // collecting the whole list at once
+  let avB2 = available(s), curB2 = curBalance(s);
+  collect(s, g);
+  eq(curBalance(s), curB2 + 121000, "42a. collecting adds the total to current");
+  eq(owedTotal(s), 0, "42b. and settles every entry in it");
+  eq(available(s), avB2, "42c. available is unchanged, same as a single Received");
+  eq(s.owed.filter(o=>o.status==="received").length, 3, "42d. all three marked received");
+  eq(g.status, "collected", "42e. the list is marked collected");
+  eq(txns(s).filter(t=>t.type==="received").length, 3, "42f. one payment recorded per item");
+
+  // removing a list must not disturb the owed entries
+  s = base();
+  s.owed.push(owedFix2("o1","Rahul",26000));
+  s.owed.push(owedFix2("o2","Aman",80000));
+  g = mkGroup(s, ["o1","o2"]);
+  tombstone(g);
+  eq(groupRows(s).length, 0, "43a. the list is gone");
+  eq(owedTotal(s), 106000, "43b. the entries it held are untouched");
+  eq(owedRows(s).filter(o=>o.status==="open").length, 2, "43c. and still open");
+  eq(curBalance(s), 100000, "43d. balance unaffected");
+
+  // a partly-paid entry goes into the list at what's outstanding
+  s = base();
+  s.owed.push(owedFix2("o1","Aman",80000));
+  rec(s, s.owed[0], 30000, T);
+  g = mkGroup(s, ["o1"]);
+  eq(g.items[0].amount, 50000, "44a. the list takes the outstanding amount, not the original");
+  eq(g.total, 50000, "44b. total matches");
+  collect(s, g);
+  eq(owedTotal(s), 0, "44c. collecting clears the rest");
+  eq(receivedFor(s,"o1"), 80000, "44d. payments add up to the full amount owed");
+
+  // frozen amounts: an entry settled separately is still collected at the saved figure
+  s = base();
+  s.owed.push(owedFix2("o1","Rahul",26000));
+  s.owed.push(owedFix2("o2","Aman",80000));
+  g = mkGroup(s, ["o1","o2"]);
+  rec(s, s.owed.find(o=>o.id==="o1"), 26000, T);      // paid on its own afterwards
+  const curMid = curBalance(s);
+  collect(s, g);
+  eq(curBalance(s), curMid + 106000, "45a. frozen list collects its saved total regardless");
+  eq(owedTotal(s), 0, "45b. everything ends up settled");
+  eq(g.total, 106000, "45c. the saved total never changed");
+
+  // lists merge across devices like any other row
+  A = dev([]); A.owedGroups = [{ id:"g1", name:"mine", items:[], total:0, createdAt:T,
+                                 status:"open", collectedAt:null, updatedAt:10 }];
+  B = dev([]); B.owedGroups = [{ id:"g1", name:"mine", items:[], total:0, createdAt:T,
+                                 status:"collected", collectedAt:T, updatedAt:20 },
+                               { id:"g2", name:"phone list", items:[], total:0, createdAt:T,
+                                 status:"open", collectedAt:null, updatedAt:20 }];
+  M = mergeStates(A,B);
+  eq(M.owedGroups.length, 2, "46a. a list made on the phone survives the merge");
+  eq(M.owedGroups.find(x=>x.id==="g1").status, "collected", "46b. the newer state of a list wins");
+  eq(syncFingerprint(mergeStates(A,B)), syncFingerprint(mergeStates(B,A)), "46c. still order-independent");
 
   function rec(st,o,amt,date){
     st.transactions.push({id:uid(),type:"received",owedId:o.id,amount:amt,date,note:o.label});
