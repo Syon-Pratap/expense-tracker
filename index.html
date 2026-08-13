@@ -135,6 +135,7 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
     <button data-act="tab" data-id="exp">Expenses</button>
     <button data-act="tab" data-id="ess">Essentials</button>
     <button data-act="tab" data-id="laun">Laundry</button>
+    <button data-act="tab" data-id="card">Card</button>
     <button data-act="tab" data-id="arch">Archive</button>
     <button data-act="tab" data-id="owed">Owed</button>
   </nav>
@@ -290,20 +291,33 @@ function normalizeState(s){
      essential — money you expect back; creates an owed entry alongside it.
      laundry   — drawn against an amount set aside for the month.            */
 const SPEND_TYPES = ["expense", "essential", "laundry"];
-function isSpend(x){ return SPEND_TYPES.indexOf(x.type) >= 0; }
+const INFLOW_TYPES = ["add", "received", "adjust"];
+/* A card charge only leaves your balance once the bill is paid. Until then it's
+   committed money that hasn't moved, so it counts against available and nothing
+   else — see cardPending(). */
+function isSpend(x){
+  if (x.type === "card") return !!x.paid;
+  return SPEND_TYPES.indexOf(x.type) >= 0;
+}
+function isInflow(x){ return INFLOW_TYPES.indexOf(x.type) >= 0; }
+function txnDelta(x){ return isSpend(x) ? -x.amount : isInflow(x) ? x.amount : 0; }
 
 function curBalance(s){
   let t = s.meta.initialBalance;
-  for (const x of txns(s)) t += (isSpend(x) ? -x.amount : x.amount);
+  for (const x of txns(s)) t += txnDelta(x);
   return t;
 }
 function balanceAsOf(s, dateStr){
   let t = s.meta.initialBalance;
   for (const x of txns(s)){
     if (x.date > dateStr) continue;
-    t += (isSpend(x) ? -x.amount : x.amount);
+    t += txnDelta(x);
   }
   return t;
+}
+/* Charges you've made but not yet settled: money spoken for, still in your account. */
+function cardPending(s){
+  return txns(s).reduce((a,x)=> (x.type === "card" && !x.paid) ? a + x.amount : a, 0);
 }
 function typeTotal(s, type, ym){
   return txns(s).reduce((a,x)=>
@@ -347,7 +361,8 @@ function syncOwed(s, o){
 function available(s){
   return curBalance(s) - s.settings.minBalance
          + (s.settings.includeOwed ? owedTotal(s) : 0)
-         - laundryHeld(s);
+         - laundryHeld(s)
+         - cardPending(s);
 }
 function avgPerDay(s, today){
   const left = daysRemaining(curYm(), today);
@@ -367,7 +382,7 @@ function spendPerDay(s, ym, catId, today){
 }
 function monthAdded(s, ym){
   return txns(s).reduce((t,x)=>
-    (!isSpend(x) && ymOf(x.date) === ym) ? t + x.amount : t, 0);
+    (isInflow(x) && ymOf(x.date) === ym) ? t + x.amount : t, 0);
 }
 
 /* ---------- monthly archive ---------- */
@@ -383,6 +398,7 @@ function buildArchive(s, ym){
     added: monthAdded(s, ym),
     essentials: typeTotal(s, "essential", ym),
     laundry: typeTotal(s, "laundry", ym),
+    card: typeTotal(s, "card", ym),
     closingBalance: balanceAsOf(s, lastDayOf(ym)),
     minBalance: s.settings.minBalance,
     byCategory: Object.keys(by).map(id => {
@@ -738,11 +754,13 @@ function render(){
     : ui.tab === "exp"  ? viewExpenses()
     : ui.tab === "ess"  ? viewEssentials()
     : ui.tab === "laun" ? viewLaundry()
+    : ui.tab === "card" ? viewCard()
     : ui.tab === "arch" ? viewArchive()
     : viewOwed();
   const old = document.querySelector(".fab"); if (old) old.remove();
   const fab = ui.tab === "ess"  ? { act:"addEssential", label:"+ Add essential" }
             : ui.tab === "laun" ? { act:"addLaundry",   label:"+ Add laundry spend" }
+            : ui.tab === "card" ? { act:"addCard",      label:"+ Add card charge" }
             : (ui.tab === "dash" || ui.tab === "exp") ? { act:"addExpense", label:"+ Add expense" }
             : null;
   if (fab){
@@ -774,6 +792,7 @@ function viewDash(){
   const cur = curBalance(state), ot = owedTotal(state), av = available(state);
   const min = state.settings.minBalance, ym = curYm();
   const held = laundryHeld(state), essTotal = typeTotal(state, "essential", ym);
+  const cardDue = cardPending(state);
   const left = daysRemaining(ym), per = avgPerDay(state);
   const spent = monthSpent(state, ym, null), sper = spendPerDay(state, ym, null);
   const el = daysElapsed(ym);
@@ -794,7 +813,7 @@ function viewDash(){
     <div class="lbl">Available to spend</div>
     <div class="amt ${av > 0 ? "good" : "bad"}">${esc(fmt(av))}</div>
     <div style="color:var(--muted);font-size:13px">
-      current ${esc(fmt(cur))} − min ${esc(fmt(min))}${state.settings.includeOwed && ot ? " + owed " + esc(fmt(ot)) : ""}${held ? " − laundry " + esc(fmt(held)) : ""}
+      current ${esc(fmt(cur))} − min ${esc(fmt(min))}${state.settings.includeOwed && ot ? " + owed " + esc(fmt(ot)) : ""}${held ? " − laundry " + esc(fmt(held)) : ""}${cardDue ? " − card " + esc(fmt(cardDue)) : ""}
     </div>
     <label class="toggle">
       <input type="checkbox" data-act="toggleOwed" ${state.settings.includeOwed ? "checked" : ""}>
@@ -830,6 +849,10 @@ function viewDash(){
     <div class="stat"><div class="k">Laundry set aside</div><div class="v">${esc(fmt(held))}</div>
       <div class="sub">${esc(fmt(typeTotal(state,"laundry",ym)))} spent ·
         <button class="btn sm" data-act="tab" data-id="laun">Open</button></div></div>
+    <div class="stat"><div class="k">On the card</div>
+      <div class="v ${cardDue ? "warn" : ""}">${esc(fmt(cardDue))}</div>
+      <div class="sub">unpaid, out of available ·
+        <button class="btn sm" data-act="tab" data-id="card">Open</button></div></div>
     ${lastArch ? `<div class="stat"><div class="k">${esc(monthLabel(lastArch.ym))} (archived)</div>
       <div class="v">${esc(fmt(lastArch.spent))}</div>
       <div class="sub">${esc(fmt(lastArch.perDay))}/day · <button class="btn sm" data-act="tab" data-id="arch">Archive</button></div></div>` : ""}
@@ -993,6 +1016,61 @@ function viewLaundry(){
   <div class="card">${sideList("laundry", ym)}</div>`;
 }
 
+function viewCard(){
+  const ym = ui.month;
+  const pending = txns(state).filter(t => t.type === "card" && !t.paid);
+  const paid = sortedExpenses(txns(state).filter(t => t.type === "card" && t.paid));
+  const pendTotal = cardPending(state);
+  const thisMonth = typeTotal(state, "card", ym);
+  const row = (t, isPaid) => `<li>
+      <div class="li-main">
+        <div>${esc(t.note || "Card charge")}</div>
+        <div class="li-sub">${esc(prettyDate(t.date))}${isPaid && t.paidDate ? " · paid " + esc(prettyDate(t.paidDate)) : ""}</div>
+      </div>
+      <div class="li-amt">${esc(fmt(t.amount))}</div>
+      ${isPaid ? `<button class="btn sm" data-act="unpayCard" data-id="${esc(t.id)}">Undo paid</button>`
+               : `<button class="btn sm primary" data-act="payCard" data-id="${esc(t.id)}">Paid</button>`}
+      <button class="btn sm" data-act="editSide" data-id="${esc(t.id)}">Edit</button>
+    </li>`;
+
+  return `
+  ${storageBanners()}
+  <div class="card hero">
+    <div class="lbl">On the card, not yet paid</div>
+    <div class="amt ${pendTotal ? "warn" : ""}">${esc(fmt(pendTotal))}</div>
+    <div style="color:var(--muted);font-size:13px">
+      Taken out of available. Still sitting in your current balance until the bill is paid.</div>
+    ${pendTotal ? `<div style="margin-top:10px">
+      <button class="btn sm primary" data-act="payAllCard">Pay whole bill (${esc(fmt(pendTotal))})</button>
+    </div>` : ""}
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="k">Unpaid charges</div><div class="v">${pending.length}</div></div>
+    <div class="stat"><div class="k">Charged in ${esc(monthLabel(ym))}</div>
+      <div class="v">${esc(fmt(thisMonth))}</div>
+      <div class="sub">not in your spending figures</div></div>
+    <div class="stat"><div class="k">All time on card</div>
+      <div class="v">${esc(fmt(typeTotal(state, "card", null)))}</div></div>
+  </div>
+
+  <div class="banner info"><span class="grow">A charge lowers <strong>available</strong>
+    straight away but leaves <strong>current</strong> alone — the money hasn't gone yet.
+    Marking it paid does the opposite: <strong>current</strong> drops and
+    <strong>available</strong> doesn't move, because it was already accounted for.</span></div>
+
+  <h2>Unpaid</h2>
+  <div class="card">
+    ${pending.length ? `<ul class="list">${sortedExpenses(pending).map(t => row(t, false)).join("")}</ul>`
+      : `<div class="empty">Nothing outstanding on the card.</div>`}
+  </div>
+
+  <details ${paid.length ? "" : "hidden"}>
+    <summary>Paid (${paid.length})</summary>
+    <div class="card"><ul class="list">${paid.map(t => row(t, true)).join("")}</ul></div>
+  </details>`;
+}
+
 function viewArchive(){
   const ym = curYm();
   const live = buildArchive(state, ym);
@@ -1022,6 +1100,9 @@ function viewArchive(){
         <div class="stat"><div class="k">Laundry</div>
           <div class="v">${esc(fmt(r.laundry || 0))}</div>
           <div class="sub">of ${esc(fmt(laundryBudget(state, r.ym)))} set aside</div></div>
+        <div class="stat"><div class="k">On card</div>
+          <div class="v">${esc(fmt(r.card || 0))}</div>
+          <div class="sub">charged this month</div></div>
         <div class="stat"><div class="k">${isLive ? "Balance now" : "Closing balance"}</div>
           <div class="v">${esc(fmt(isLive ? curBalance(state) : r.closingBalance))}</div></div>
       </div>
@@ -1339,21 +1420,23 @@ function dlgReceivePart(o){
 
 /* Essentials and laundry entries: same shape, different meaning. */
 function dlgSide(type, existing){
-  const isEss = type === "essential";
-  const title = existing ? (isEss ? "Edit essential" : "Edit laundry spend")
-                         : (isEss ? "Add essential"  : "Add laundry spend");
+  const isEss = type === "essential", isCard = type === "card";
+  const noun = isEss ? "essential" : isCard ? "card charge" : "laundry spend";
+  const title = (existing ? "Edit " : "Add ") + noun;
   const intro = existing ? ""
     : isEss ? `<p style="color:var(--muted);font-size:13px;margin-top:0">Comes out of your current
         balance and adds an owed entry for the same amount, so available stays where it is.
         It won't touch your spending-per-day figures.</p>`
+    : isCard ? `<p style="color:var(--muted);font-size:13px;margin-top:0">Lowers available now;
+        your current balance only drops when you mark the charge paid.</p>`
             : `<p style="color:var(--muted);font-size:13px;margin-top:0">Comes out of your current
         balance. Available doesn't move while you're still within what you set aside
         (${esc(fmt(laundryBudget(state, curYm())))} this month).</p>`;
   openDlg(title,
     intro + fAmount(existing && existing.amount) + fDate(existing && existing.date)
-    + `<label><span>What for${isEss ? "" : " (optional)"}</span>
+    + `<label><span>What for${isEss || isCard ? "" : " (optional)"}</span>
         <input name="note" type="text" autocomplete="off"
-          placeholder="${isEss ? "e.g. medicines" : "e.g. washing"}"
+          placeholder="${isEss ? "e.g. medicines" : isCard ? "e.g. headphones" : "e.g. washing"}"
           value="${esc(existing ? existing.note : "")}"></label>`,
     fd => {
       const amt = parseMoney(fd.get("amount"));
@@ -1372,10 +1455,34 @@ function dlgSide(type, existing){
     },
     existing ? `<button type="button" class="btn danger spacer" data-del>Delete</button>` : "");
   if (existing) dlg.querySelector("[data-del]").onclick = () => {
-    if (!confirm("Delete this? Your current balance goes back up by " + fmt(existing.amount)
-        + (isEss ? ".\n\nThe owed entry it created stays — remove that separately if you want it gone." : "."))) return;
+    const effect = isCard && !existing.paid
+      ? "Delete this? Your available balance goes back up by " + fmt(existing.amount)
+        + " — nothing has left your current balance yet."
+      : "Delete this? Your current balance goes back up by " + fmt(existing.amount)
+        + (isEss ? ".\n\nThe owed entry it created stays — remove that separately if you want it gone." : ".");
+    if (!confirm(effect)) return;
     tombstone(existing); closeDlg(); commit();
   };
+}
+
+/* Paying a charge moves it from "committed" to "gone": current drops, and the
+   pending total drops by the same amount, so available doesn't move. */
+function payCard(t){
+  if (!t || t.paid) return;
+  if (!confirm("Mark " + fmt(t.amount) + (t.note ? " (" + t.note + ")" : "")
+      + " as paid?\n\nIt comes out of your current balance. Available stays where it is.")) return;
+  t.paid = true; t.paidDate = todayStr(); stamp(t); commit();
+}
+function payAllCard(){
+  const pending = txns(state).filter(t => t.type === "card" && !t.paid);
+  if (!pending.length) return;
+  const total = pending.reduce((a,t)=> a + t.amount, 0);
+  if (!confirm("Pay the whole bill — " + fmt(total) + " across " + pending.length
+      + " charge" + (pending.length === 1 ? "" : "s") + "?\n\n"
+      + "It comes out of your current balance. Available stays where it is.")) return;
+  const today = todayStr();
+  for (const t of pending){ t.paid = true; t.paidDate = today; stamp(t); }
+  commit();
 }
 
 function dlgLaundryBudget(){
@@ -1583,6 +1690,17 @@ document.addEventListener("click", e => {
     case "editExpense": dlgExpense(txns(state).find(t => t.id === id)); break;
     case "addEssential": dlgSide("essential", null); break;
     case "addLaundry": dlgSide("laundry", null); break;
+    case "addCard": dlgSide("card", null); break;
+    case "payCard": payCard(txns(state).find(t => t.id === id)); break;
+    case "payAllCard": payAllCard(); break;
+    case "unpayCard": {
+      const t = txns(state).find(x => x.id === id);
+      if (t && confirm("Undo paying " + fmt(t.amount) + "?\n\nIt goes back to being an unpaid "
+          + "charge: your current balance rises again and available is unchanged.")){
+        t.paid = false; t.paidDate = null; stamp(t); commit();
+      }
+      break;
+    }
     case "setLaundry": dlgLaundryBudget(); break;
     case "editSide": {
       const t = txns(state).find(x => x.id === id);
@@ -1727,7 +1845,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && dlg.open){ closeDlg(); return; }
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) || dlg.open || !state) return;
   if (e.key === "a"){ e.preventDefault(); dlgExpense(null); }
-  const tabs = { "1":"dash", "2":"exp", "3":"ess", "4":"laun", "5":"arch", "6":"owed" };
+  const tabs = { "1":"dash", "2":"exp", "3":"ess", "4":"laun", "5":"card", "6":"arch", "7":"owed" };
   if (tabs[e.key]){ ui.tab = tabs[e.key]; render(); }
 });
 
@@ -2460,6 +2578,78 @@ function runTests(){
   eq(M.owedGroups.length, 2, "46a. a list made on the phone survives the merge");
   eq(M.owedGroups.find(x=>x.id==="g1").status, "collected", "46b. the newer state of a list wins");
   eq(syncFingerprint(mergeStates(A,B)), syncFingerprint(mergeStates(B,A)), "46c. still order-independent");
+
+  /* ---- credit card ---- */
+  const card = (id, amt, paid, date) => ({ id, type:"card", amount:amt, date:date||T,
+                                           note:"", paid:!!paid, updatedAt:1 });
+  s = base();
+  const cur47 = curBalance(s), av47 = available(s);
+  s.transactions.push(card("k1", 25000));
+  eq(curBalance(s), cur47, "47a. an unpaid charge leaves current alone");
+  eq(available(s), av47 - 25000, "47b. but comes straight out of available");
+  eq(cardPending(s), 25000, "47c. it shows as pending");
+  eq(monthSpent(s,"2026-08",null), 0, "47d. stays out of monthly spending");
+  eq(spendPerDay(s,"2026-08",null,T), 0, "47e. and the per-day figure");
+  eq(monthAdded(s,"2026-08"), 0, "47f. and is NOT counted as money coming in");
+
+  // paying it: the mirror image
+  s.transactions[0].paid = true;
+  eq(curBalance(s), cur47 - 25000, "48a. paying takes it out of current");
+  eq(available(s), av47 - 25000, "48b. available doesn't move — already accounted for");
+  eq(cardPending(s), 0, "48c. nothing left pending");
+  eq(monthSpent(s,"2026-08",null), 0, "48d. still out of monthly spending");
+  // and undoing the payment puts it back
+  s.transactions[0].paid = false;
+  eq(curBalance(s), cur47, "48e. undoing a payment restores current");
+  eq(available(s), av47 - 25000, "48f. available still unmoved");
+
+  // several charges, paid in one go
+  s = base();
+  s.transactions.push(card("k1", 25000), card("k2", 40000), card("k3", 10000));
+  eq(cardPending(s), 75000, "49a. pending is the sum of unpaid charges");
+  eq(available(s), av47 - 75000, "49b. all of it held out of available");
+  const avBeforePay = available(s);
+  txns(s).filter(t=>t.type==="card").forEach(t => { t.paid = true; });
+  eq(curBalance(s), cur47 - 75000, "49c. paying the bill clears it from current");
+  eq(available(s), avBeforePay, "49d. available unchanged across the whole bill");
+  eq(cardPending(s), 0, "49e. nothing pending afterwards");
+
+  // deleting behaves differently depending on whether it was paid
+  s = base(); s.transactions.push(card("k1", 25000));
+  tombstone(s.transactions[0]);
+  eq(available(s), av47, "50a. deleting an unpaid charge gives available back");
+  eq(curBalance(s), cur47, "50b. current was never touched");
+  s = base(); s.transactions.push(card("k1", 25000, true));
+  tombstone(s.transactions[0]);
+  eq(curBalance(s), cur47, "50c. deleting a paid charge gives current back");
+  eq(available(s), av47, "50d. and available with it");
+
+  // the side sections stack correctly
+  s = base();
+  s.laundryBudgets = [{ id:"2026-08", amount:50000, updatedAt:1 }];
+  s.transactions.push(card("k1", 30000));
+  s.transactions.push({id:"e1",type:"expense",categoryId:"c1",amount:5000,date:T,updatedAt:1});
+  s.owed.push({id:"o1",label:"R",amount:20000,remaining:20000,dateAdded:T,status:"open",note:"",updatedAt:1});
+  eq(curBalance(s), 100000 - 5000, "51a. only the real expense left current");
+  eq(available(s), 100000 - 5000 - 20000 + 20000 - 50000 - 30000,
+     "51b. available nets min, owed, laundry held and card pending together");
+
+  // archive records card charges separately
+  s = base(); s.meta.lastSeenMonth = "2026-07";
+  s.transactions.push({id:"e7",type:"expense",categoryId:"c1",amount:4000,date:"2026-07-05",updatedAt:1});
+  s.transactions.push(card("k7", 12000, false, "2026-07-11"));
+  rolloverIfNeeded(s, "2026-08");
+  eq(s.archive[0].spent, 4000, "52a. archived spending excludes card charges");
+  eq(s.archive[0].card, 12000, "52b. card charges archived on their own line");
+  eq(s.archive[0].added, 0, "52c. an unpaid charge is not money added");
+  eq(s.archive[0].closingBalance, 96000, "52d. unpaid charge doesn't move the closing balance");
+
+  // an unpaid charge must never be mistaken for income by the balance history
+  s = base(); s.transactions.push(card("k1", 25000), {id:"a1",type:"add",amount:9000,date:T,updatedAt:1});
+  eq(txns(s).filter(isInflow).length, 1, "53a. only the top-up counts as money in");
+  eq(txns(s).filter(t => t.type === "card" && !t.paid).every(t => !isSpend(t)), true,
+     "53b. an unpaid charge is neither spend nor inflow");
+  eq(curBalance(s), 109000, "53c. so the balance only reflects the top-up");
 
   function rec(st,o,amt,date){
     st.transactions.push({id:uid(),type:"received",owedId:o.id,amount:amt,date,note:o.label});
