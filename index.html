@@ -649,6 +649,37 @@ function migrate(d){
   }));
   if (typeof d.settings.updatedAt !== "number") d.settings.updatedAt = seed;
   if (typeof d.meta.initialBalanceUpdatedAt !== "number") d.meta.initialBalanceUpdatedAt = seed;
+  /* Repair categories that share a name. Setting the app up separately on two
+     devices used to generate different ids for the same outlet, so merging left
+     one outlet showing several times. Pick a survivor the same way on every
+     device, move that outlet's entries onto it, and tombstone the rest. */
+  const catUsage = {};
+  for (const t of d.transactions) if (t.categoryId) catUsage[t.categoryId] = (catUsage[t.categoryId] || 0) + 1;
+  const byName = {};
+  for (const c of d.categories){
+    if (c.deleted) continue;
+    const key = (c.name || "").trim().toLowerCase();
+    if (key) (byName[key] = byName[key] || []).push(c);
+  }
+  for (const key in byName){
+    const group = byName[key];
+    if (group.length < 2) continue;
+    // Deterministic choice — a fixed built-in id wins, otherwise the lowest id.
+    // Usage counts are deliberately not used: they differ between devices before
+    // a sync, which would make each device pick a different survivor.
+    group.sort((a,b)=>{
+      const fa = a.id.indexOf("builtin-") === 0 ? 0 : 1, fb = b.id.indexOf("builtin-") === 0 ? 0 : 1;
+      if (fa !== fb) return fa - fb;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+    const keep = group[0];
+    if (group.some(c => !c.archived)) keep.archived = false;
+    for (const dup of group.slice(1)){
+      for (const t of d.transactions) if (t.categoryId === dup.id){ t.categoryId = keep.id; t.updatedAt = nowTs(); }
+      dup.deleted = true; dup.updatedAt = nowTs();
+    }
+  }
+
   /* Built-in categories introduced after you first set up get added on load.
      seededCats remembers which ones have been offered, so one you archive or
      rename is never silently put back. */
@@ -673,7 +704,10 @@ function freshState(initial, min){
   return {
     version: 3,
     settings: { minBalance: min, includeOwed: true, updatedAt: now },
-    categories: BUILTIN_CATS.map(n => ({ id: uid(), name: n, builtin: true, archived: false, updatedAt: now })),
+    // Fixed ids, not random ones: two devices set up separately must produce the
+    // same rows, or merging turns one outlet into two.
+    categories: BUILTIN_CATS.map(n => ({ id: builtinCatId(n), name: n,
+                                         builtin: true, archived: false, updatedAt: now })),
     transactions: [], owed: [], archive: [], laundryBudgets: [], owedGroups: [],
     meta: { initialBalance: initial, initialBalanceUpdatedAt: now,
             createdAt: todayStr(), lastSeenMonth: curYm(), savedAt: "" }
@@ -2759,6 +2793,45 @@ function runTests(){
   eq(SIDE_META.laundry.owedBacked, false, "58c. laundry doesn't");
   eq(SIDE_META.card.owedBacked, false, "58d. nor does the card");
   eq(SPEND_TYPES.indexOf("reimbursed") >= 0, true, "58e. reimbursed counts as spending from current");
+
+  /* ---- duplicate categories from separate setups ---- */
+  // Two devices set up independently used to produce different ids per outlet.
+  let dupA = freshState(500000, 100000), dupB = freshState(500000, 100000);
+  eq(dupA.categories[0].id, dupB.categories[0].id, "63a. two fresh setups now agree on ids");
+  eq(dupA.categories[0].id, builtinCatId(BUILTIN_CATS[0]), "63b. built-ins use the fixed id");
+  let dupM = mergeStates(dupA, dupB);
+  eq(dupM.categories.length, BUILTIN_CATS.length, "63c. merging two setups yields one set of outlets");
+  eq(catRows(dupM).filter(c=>c.name==="Vending Machine").length, 1, "63d. no duplicate outlet");
+
+  // repairing data that already has duplicates, with entries on both copies
+  let dirty = { version:3, settings:{minBalance:1000,includeOwed:true,updatedAt:1},
+    categories:[{id:"zzz1",name:"Vending Machine",builtin:true,archived:false,updatedAt:1},
+                {id:"aaa2",name:"Vending Machine",builtin:true,archived:false,updatedAt:1},
+                {id:"mmm3",name:"Mess",builtin:true,archived:false,updatedAt:1}],
+    transactions:[{id:"t1",type:"expense",categoryId:"zzz1",amount:26000,date:T,updatedAt:1},
+                  {id:"t2",type:"expense",categoryId:"aaa2",amount:14000,date:T,updatedAt:1},
+                  {id:"t3",type:"expense",categoryId:"mmm3",amount:5000,date:T,updatedAt:1}],
+    owed:[], archive:[], laundryBudgets:[], owedGroups:[],
+    meta:{initialBalance:100000,savedAt:"2026-08-01T00:00:00.000Z"} };
+  let fixed = migrate(JSON.parse(JSON.stringify(dirty)));
+  eq(catRows(fixed).filter(c=>c.name==="Vending Machine").length, 1, "64a. duplicates collapse to one");
+  eq(fixed.categories.find(c=>c.id==="zzz1").deleted, true, "64b. the loser is tombstoned");
+  const survivor = catRows(fixed).find(c=>c.name==="Vending Machine").id;
+  eq(survivor, "aaa2", "64c. survivor chosen the same way on any device");
+  eq(monthSpent(fixed,"2026-08",survivor), 40000, "64d. BOTH copies' entries land on the survivor");
+  eq(monthSpent(fixed,"2026-08",null), 45000, "64e. nothing is lost or double-counted");
+  eq(curBalance(fixed), 100000-45000, "64f. the balance is unchanged by the repair");
+  eq(txns(fixed).length, 3, "64g. no entry was deleted");
+  // repairing twice changes nothing
+  const again = migrate(JSON.parse(JSON.stringify(fixed)));
+  eq(catRows(again).filter(c=>c.name==="Vending Machine").length, 1, "65a. repair is idempotent");
+  eq(monthSpent(again,"2026-08",null), 45000, "65b. totals stay put");
+  // a fixed built-in id always wins over a random one
+  dirty.categories.push({id:"builtin-vending-machine",name:"Vending Machine",builtin:true,archived:false,updatedAt:1});
+  fixed = migrate(JSON.parse(JSON.stringify(dirty)));
+  eq(catRows(fixed).find(c=>c.name==="Vending Machine").id, "builtin-vending-machine",
+     "66a. the fixed id is preferred as survivor");
+  eq(monthSpent(fixed,"2026-08","builtin-vending-machine"), 40000, "66b. entries follow it");
 
   /* ---- built-in categories added after setup ---- */
   eq(BUILTIN_CATS.indexOf("Gajalakshmi") >= 0, true, "59a. Gajalakshmi is a built-in outlet");
