@@ -166,7 +166,12 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 const KEY = "expense-tracker-v1";              // localStorage mirror key
 const DB_NAME = "expense-tracker", DB_STORE = "kv";
 const BUILTIN_CATS = ["Vending Machine","Mess","Night Canteen","RC","JV Shetty",
-                      "IC","Nescafe","INS","Subspot","Other Canteens"];
+                      "IC","Nescafe","INS","Subspot","Gajalakshmi","Other Canteens"];
+/* Built-in categories added after first setup need a fixed id, so two devices
+   seeding the same one produce the same row and merging dedupes it. */
+function builtinCatId(name){
+  return "builtin-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
 
 /* ---------- money: integer paise everywhere ---------- */
 function parseMoney(str, allowNegative){
@@ -644,6 +649,18 @@ function migrate(d){
   }));
   if (typeof d.settings.updatedAt !== "number") d.settings.updatedAt = seed;
   if (typeof d.meta.initialBalanceUpdatedAt !== "number") d.meta.initialBalanceUpdatedAt = seed;
+  /* Built-in categories introduced after you first set up get added on load.
+     seededCats remembers which ones have been offered, so one you archive or
+     rename is never silently put back. */
+  d.meta.seededCats = d.meta.seededCats || [];
+  for (const name of BUILTIN_CATS){
+    const key = name.toLowerCase(), id = builtinCatId(name);
+    const alreadyOffered = d.meta.seededCats.indexOf(key) >= 0
+      || d.categories.some(c => c.id === id || (c.name || "").toLowerCase() === key);
+    if (!alreadyOffered)
+      d.categories.push({ id, name, builtin:true, archived:false, updatedAt: seed });
+    if (d.meta.seededCats.indexOf(key) < 0) d.meta.seededCats.push(key);
+  }
   // Self-heal owed entries against their payment history.
   d.owed.forEach(o => { if (o.remaining == null) o.remaining = o.amount; if (!o.deleted) syncOwed(d, o); });
   if (!d.meta.lastSeenMonth) d.meta.lastSeenMonth = curYm();
@@ -2732,6 +2749,48 @@ function runTests(){
   eq(SIDE_META.laundry.owedBacked, false, "58c. laundry doesn't");
   eq(SIDE_META.card.owedBacked, false, "58d. nor does the card");
   eq(SPEND_TYPES.indexOf("reimbursed") >= 0, true, "58e. reimbursed counts as spending from current");
+
+  /* ---- built-in categories added after setup ---- */
+  eq(BUILTIN_CATS.indexOf("Gajalakshmi") >= 0, true, "59a. Gajalakshmi is a built-in outlet");
+  eq(builtinCatId("Gajalakshmi"), "builtin-gajalakshmi", "59b. built-in ids are derived from the name");
+  eq(builtinCatId("Night Canteen"), "builtin-night-canteen", "59c. spaces become dashes");
+
+  // existing data gains the new outlet without disturbing what's there
+  let old2 = { version:3, settings:{minBalance:1000,includeOwed:true,updatedAt:1},
+    categories:[{id:"c1",name:"Mess",builtin:true,archived:false,updatedAt:1},
+                {id:"c2",name:"Subspot",builtin:true,archived:false,updatedAt:1}],
+    transactions:[{id:"t",type:"expense",categoryId:"c1",amount:500,date:T,updatedAt:1}],
+    owed:[], archive:[], laundryBudgets:[], owedGroups:[],
+    meta:{initialBalance:20000,savedAt:"2026-08-01T00:00:00.000Z"} };
+  let mig2 = migrate(JSON.parse(JSON.stringify(old2)));
+  const names = mig2.categories.map(c=>c.name);
+  eq(names.indexOf("Gajalakshmi") >= 0, true, "60a. it appears in existing data on load");
+  eq(mig2.categories.find(c=>c.name==="Gajalakshmi").id, "builtin-gajalakshmi", "60b. with the fixed id");
+  eq(mig2.categories.find(c=>c.name==="Mess").id, "c1", "60c. existing categories keep their ids");
+  eq(curBalance(mig2), 19500, "60d. balances are untouched");
+  eq(names.filter(n=>n==="Gajalakshmi").length, 1, "60e. added exactly once");
+
+  // loading twice must not add it twice
+  const twice = migrate(JSON.parse(JSON.stringify(mig2)));
+  eq(twice.categories.filter(c=>c.name==="Gajalakshmi").length, 1, "61a. re-loading doesn't duplicate it");
+  // and archiving it must stick
+  twice.categories.find(c=>c.name==="Gajalakshmi").archived = true;
+  const thrice = migrate(JSON.parse(JSON.stringify(twice)));
+  eq(thrice.categories.filter(c=>c.name==="Gajalakshmi").length, 1, "61b. no duplicate after archiving");
+  eq(thrice.categories.find(c=>c.name==="Gajalakshmi").archived, true, "61c. archiving it sticks");
+  // deleting it outright must also stick, thanks to seededCats
+  const gone = migrate(JSON.parse(JSON.stringify(
+    Object.assign({}, thrice, { categories: thrice.categories.filter(c=>c.name!=="Gajalakshmi") }))));
+  eq(gone.categories.filter(c=>c.name==="Gajalakshmi").length, 0, "61d. removing it is respected");
+
+  // two devices seeding it independently merge to one row
+  A = dev([]); A.categories = A.categories.concat(
+    [{id:"builtin-gajalakshmi",name:"Gajalakshmi",builtin:true,archived:false,updatedAt:5}]);
+  B = dev([]); B.categories = B.categories.concat(
+    [{id:"builtin-gajalakshmi",name:"Gajalakshmi",builtin:true,archived:false,updatedAt:9}]);
+  M = mergeStates(A,B);
+  eq(M.categories.filter(c=>c.name==="Gajalakshmi").length, 1,
+     "62a. both devices seeding it still yields one category");
 
   function rec(st,o,amt,date){
     st.transactions.push({id:uid(),type:"received",owedId:o.id,amount:amt,date,note:o.label});
