@@ -18,7 +18,7 @@ A personal tracker for daily campus spending. It answers two questions at a glan
 | **Min balance** | A floor you never want to dip below. |
 | **Owed balance** | What others owe you. Not in current — you don't have it yet. |
 | **Available** | What's genuinely spendable (§2.1). |
-| **Avg/day (spendable)** | `available ÷ days remaining` (today counts as remaining). |
+| **Avg/day (spendable)** | `available ÷ days remaining` (counted from tomorrow; today is already under way). |
 | **Spend/day so far** | `month spent ÷ days elapsed` (today counts as elapsed). |
 
 ### 2.1 The balance equation
@@ -173,7 +173,7 @@ Bank/UPI sync, receipt scanning, multi-user, currencies other than ₹, per-cate
 
 | Question | Decision |
 |---|---|
-| Does avg/day count today as remaining? | Yes. |
+| Does avg/day count today as remaining? | No — it counts from tomorrow. On the last day it shows the whole available rather than dividing by zero. |
 | Do past-month expenses affect current balance? | Yes; they only appear in that month's stats. |
 | Min balance changed mid-month? | Recalculates from now on; no history rewrite. |
 | Essentials ↔ its owed entry | **Independent** once created. |

@@ -225,16 +225,20 @@ function prettyDate(dateStr){
   const [y,m,d] = dateStr.split("-").map(Number);
   return new Date(y,m-1,d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
 }
-// Today counts as both elapsed and remaining.
+// Today counts as elapsed (you've already spent on it) but not as remaining
+// (it's under way), so the two add up to the length of the month.
 function daysElapsed(ym, today){
   today = today || todayStr();
   if (ym === ymOf(today)) return Number(today.slice(8,10));
   return daysInMonth(ym);
 }
+/* Days left counts from tomorrow — today is already under way. On the last day
+   of the month this is 0, and avgPerDay() shows the whole available instead of
+   dividing by nothing. */
 function daysRemaining(ym, today){
   today = today || todayStr();
   const now = ymOf(today);
-  if (ym === now) return daysInMonth(ym) - Number(today.slice(8,10)) + 1;
+  if (ym === now) return daysInMonth(ym) - Number(today.slice(8,10));
   if (ym < now) return 0;
   return daysInMonth(ym);
 }
@@ -901,7 +905,8 @@ function viewDash(){
   <div class="grid">
     <div class="stat"><div class="k">Spendable / day</div>
       <div class="v ${per > 0 ? "" : "bad"}">${esc(fmt(per))}</div>
-      <div class="sub">${left} day${left === 1 ? "" : "s"} left in ${esc(monthLabel(ym))}</div></div>
+      <div class="sub">${left === 0 ? "last day of " + esc(monthLabel(ym)) + " — this is the lot"
+        : left + " day" + (left === 1 ? "" : "s") + " left after today"}</div></div>
     <div class="stat"><div class="k">Current balance</div>
       <div class="v">${esc(fmt(cur))}</div>
       <div class="sub"><button class="btn sm" data-act="addMoney">+ Add money</button>
@@ -2245,14 +2250,21 @@ function runTests(){
   s.transactions = [];
   eq(curBalance(s), 100000, "7b. delete restores balance exactly");
 
-  eq(daysRemaining("2026-08","2026-08-31"), 1, "8a. last day of month leaves 1 day");
-  eq(daysRemaining("2026-08","2026-08-01"), 31, "8b. first day leaves all 31");
+  eq(daysRemaining("2026-08","2026-08-31"), 0, "8a. no days left after the last one");
+  eq(daysRemaining("2026-08","2026-08-01"), 30, "8b. on the 1st, 30 days follow today");
+  eq(daysRemaining("2026-08","2026-08-15"), 16, "8b2. on the 15th, 16 days follow today");
+  eq(daysRemaining("2026-08","2026-08-30"), 1, "8b3. on the 30th, tomorrow is the only one left");
+  eq(daysElapsed("2026-08","2026-08-15") + daysRemaining("2026-08","2026-08-15"),
+     daysInMonth("2026-08"), "8b4. elapsed + remaining now add up to the month");
   eq(daysElapsed("2026-08","2026-08-01"), 1, "8c. day 1 counts as elapsed");
   eq(daysInMonth("2024-02"), 29, "8d. leap February");
   eq(daysInMonth("2026-02"), 28, "8e. non-leap February");
   eq(daysRemaining("2026-07","2026-08-10"), 0, "8f. past month has no days remaining");
   eq(lastDayOf("2026-02"), "2026-02-28", "8g. last day of February");
-  s = base(); eq(avgPerDay(s,"2026-08-31"), 80000, "8h. last day: whole available spendable today");
+  s = base();
+  eq(avgPerDay(s,"2026-08-31"), 80000, "8h. last day: shows the whole available, never divides by zero");
+  eq(avgPerDay(s,"2026-08-15"), Math.floor(80000/16), "8i. mid-month divides by the days ahead");
+  eq(avgPerDay(s,"2026-08-30"), 80000, "8j. on the 30th it's spread over tomorrow alone");
 
   s = base(); s.transactions.push({id:"t1",type:"expense",categoryId:"c1",amount:1234,date:T,note:"chai"});
   eq(curBalance(migrate(JSON.parse(JSON.stringify(s)))), curBalance(s), "9. round-trip preserves balance");

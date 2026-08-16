@@ -26,7 +26,7 @@ icon you can pin to the taskbar.
 | **Minimum balance** | Your floor — money you refuse to dip into |
 | **Owed to me** | What people owe you; not in your pocket yet |
 | **Available** | What's genuinely spendable (full formula below) |
-| **Spendable / day** | `available ÷ days left this month` (today counts) |
+| **Spendable / day** | `available ÷ days left after today` |
 | **Spent / day so far** | `spent this month ÷ days elapsed` (today counts) |
 
 ```
