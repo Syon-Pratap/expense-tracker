@@ -164,7 +164,7 @@ switch tabs. On a phone the tab strip scrolls sideways.
 ## Checking it still works
 
 Open [`index.html?test=1`](https://syon-pratap.github.io/expense-tracker/index.html?test=1)
-to run the built-in suite — **249 checks** covering balance rules, date maths, month
+to run the built-in suite — **282 checks** covering balance rules, date maths, month
 rollover, archiving, editing, essentials, reimbursed, laundry, the card, owed lists,
 multi-device merging and data migration. All should pass.
 
